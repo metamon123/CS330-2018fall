@@ -23,6 +23,7 @@ extern test_func test_priority_fifo;
 extern test_func test_priority_preempt;
 extern test_func test_priority_sema;
 extern test_func test_priority_condvar;
+/*
 extern test_func test_mlfqs_load_1;
 extern test_func test_mlfqs_load_60;
 extern test_func test_mlfqs_load_avg;
@@ -33,7 +34,7 @@ extern test_func test_mlfqs_nice_2;
 extern test_func test_mlfqs_nice_10;
 extern test_func test_mlfqs_block;
 extern test_func test_hello;
-
+*/
 void msg (const char *, ...);
 void fail (const char *, ...);
 void pass (void);
