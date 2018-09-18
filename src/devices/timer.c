@@ -32,10 +32,18 @@ static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 
-bool
-less (const struct list_elem *e1, const struct list_elem *e2, void *aux)
+static bool
+timer_less (const struct list_elem *e1, const struct list_elem *e2, void *aux UNUSED)
 {
-  
+    struct thread *t1 = list_entry (e1, struct thread, elem);
+    struct thread *t2 = list_entry (e2, struct thread, elem);
+
+    ASSERT (t1 != NULL && t2 != NULL);
+
+    if (t1->awake_tick < t2->awake_tick)
+        return true;
+    else
+        return false;
 }
 /* Sets up the 8254 Programmable Interval Timer (PIT) to
    interrupt PIT_FREQ times per second, and registers the
@@ -43,8 +51,8 @@ less (const struct list_elem *e1, const struct list_elem *e2, void *aux)
 void
 timer_init (void) 
 {
-
   list_init (&sleep_list);
+
   /* 8254 input frequency divided by TIMER_FREQ, rounded to
      nearest. */
   uint16_t count = (1193180 + TIMER_FREQ / 2) / TIMER_FREQ;
@@ -108,9 +116,20 @@ timer_sleep (int64_t ticks)
 {
   int64_t start = timer_ticks ();
   struct thread *cur = thread_current ();
+  enum intr_level old_level;
 
   ASSERT (intr_get_level () == INTR_ON);
-  list_push_back (&sleep_list, &cur->elem);
+
+  if (ticks <= 0) return;
+
+  // should we consider the case where timer_ticks () + ticks > int64_t MAX?
+  cur->awake_tick = start + ticks;
+  
+  old_level = intr_disable ();
+  list_insert_ordered (&sleep_list, &cur->elem, timer_less, NULL);
+  thread_block ();
+
+  intr_set_level (old_level);
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -145,11 +164,36 @@ timer_print_stats (void)
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
-  /*
+  struct list_elem *e;
+  struct thread *t;
+  ASSERT (intr_get_level () == INTR_OFF);
   ticks++;
-  thread_tick ();
-  */
-  ticks++;
+
+  for (e = list_begin (&sleep_list); e != list_end (&sleep_list);)
+  {
+    struct thread *t = list_entry (e, struct thread, elem);
+    ASSERT (t != NULL);
+
+    if (t->awake_tick <= ticks)
+    {
+/*
+ * common mistake : list_remove after thread_unblock
+ *
+ * - I used same elem for ready_list and sleep_list
+ * - In thread_unblock, t->elem is pushed into ready_list
+ * - In list_remove, t->elem which is pushed into ready_list
+ *   is unlinked, which is not our intention.
+ *
+ * -> We should use two different list_elem (ex. elem and sleep_elem),
+ *    or unlink from sleep_list before thread_unblock call.
+ */
+      // ASSERT (t->status == THREAD_BLOCK);
+      e = list_remove (e);
+      thread_unblock (t);
+    }
+    else
+      break;
+  }
 
   thread_tick ();
 }
