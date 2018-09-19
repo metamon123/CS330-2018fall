@@ -27,6 +27,7 @@ static unsigned loops_per_tick;
 
 static struct list sleep_list;
 
+static bool timer_less (const struct list_elem *e1, const struct list_elem *e2, void *aux UNUSED);
 static intr_handler_func timer_interrupt;
 static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
@@ -41,9 +42,11 @@ timer_less (const struct list_elem *e1, const struct list_elem *e2, void *aux UN
     ASSERT (t1 != NULL && t2 != NULL);
 
     if (t1->awake_tick < t2->awake_tick)
-        return true;
+      return true;
+    else if (t1->awake_tick == t2->awake_tick)
+      return (t1->priority > t2->priority);
     else
-        return false;
+      return false;
 }
 /* Sets up the 8254 Programmable Interval Timer (PIT) to
    interrupt PIT_FREQ times per second, and registers the
