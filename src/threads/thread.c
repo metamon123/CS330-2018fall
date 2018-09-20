@@ -4,6 +4,7 @@
 #include <random.h>
 #include <stdio.h>
 #include <string.h>
+#include <limits.h>
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
@@ -323,12 +324,107 @@ priority_higher (const struct list_elem *e1, const struct list_elem *e2, void *a
   return (t1->priority > t2->priority);
 }
 
+/*
+void
+donate_priority (struct thread *donator, struct thread *donatee, struct lock *lock)
+{
+  ASSERT (is_thread (donator) && is_thread (donatee));
+
+  if (donator->priority <= donatee->priority) return;
+
+  if (donatee->donator_lock == NULL)
+    donatee->ex_priority = donatee->priority;
+  donatee->donator_lock = lock;
+}
+*/
+
+/*
+ * Get donation for donatee by looking all waiters
+ * donatee is blocking.
+ *
+ * donatee can be either donated or not.
+ *
+ * Synchronization should be done outside of the function.
+ */
+void
+get_donation (struct thread *donatee)
+{
+  ASSERT (is_thread (donatee));
+
+  int max_priority = INT_MIN;
+  struct lock *max_priority_lock = NULL;
+  struct lock *lock;
+  struct thread *t;
+  struct list_elem *e;
+
+  for (e = list_begin (&donatee->lock_list); e != list_end (&donatee->lock_list);
+       e = list_next (e))
+  {
+    lock = list_entry (e, struct lock, elem);
+    if (!list_empty (&lock->semaphore.waiters))
+    {
+      t = list_entry (list_front (&lock->semaphore.waiters), struct thread, elem);
+      ASSERT (is_thread (t));
+
+      if (t->priority >= max_priority)
+      {
+        max_priority = t->priority;
+        max_priority_lock = lock;
+      }
+    }
+  }
+
+  if (max_priority > donatee->priority)
+  {
+    if (donatee->donator_lock == NULL)
+      donatee->ex_priority = donatee->priority;
+    donatee->donator_lock = max_priority_lock;
+    donatee->priority = max_priority;
+  }
+}
+
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  struct thread *cur = thread_current ();
 
+  /*
+   * 1. not donated
+   * 1) set priority
+   * 2) if needed, get priority donation from
+   *    waiting thread with max priority
+   * 2. donated
+   * 1) new_priority < donated priority
+   *    keep donated priority WITH setting ex_priority
+   *    to new_priority
+   * 2) new_priority >= donated priority
+   *    end donate & set priority as new_priority
+   */
+  sema_down (&cur->sema_donate);
+  if (cur->donator_lock != NULL)
+  {
+      if (new_priority < cur->priority)
+        cur->ex_priority = new_priority;
+      else
+      {
+        // end donate
+        cur->donator_lock = NULL;
+        cur->priority = new_priority;
+      }
+  }
+  else
+  {
+    cur->priority = new_priority;
+    get_donation (cur);
+  }
+
+  /*
+   cur->donator_lock = NULL;
+   cur->priority = new_priority;
+   get_donoation (cur);
+   */
+  sema_up (&cur->sema_donate);
 }
 
 /* Returns the current thread's priority. */
@@ -453,6 +549,11 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+
+  sema_init (&t->sema_donate, 1);
+  list_init (&t->lock_list);
+  t->ex_priority = priority;
+
   t->magic = THREAD_MAGIC;
 }
 

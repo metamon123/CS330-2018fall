@@ -198,8 +198,61 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
+  struct thread *cur = thread_current ();
+  struct thread *holder = lock->holder;
+  enum intr_level old_level;
+/*
+  bool occupied;
+  while ((occupied = !sema_try_down (&lock->semaphore)))
+  {
+    old_level = intr_disable ();
+    if (lock->holder == NULL)
+    {
+      intr_set_level (old_level);
+      continue;
+    }
+    holder = lock->holder;
+
+    sema_down (&holder->sema_donate);
+    if (holder->priority < cur->priority)
+    {
+      // donate priority
+      if (holder->donator_lock = NULL)
+        holder->ex_priority = holder->priority;
+      holder->donator_lock = lock;
+      holder->priority = cur->priority;
+    }
+    sema_up (&holder->sema_donate);
+
+    intr_set_level (old_level);
+    sema_down (&lock->semaphore);
+  }
+*/
+
+  if (holder != NULL) 
+  {
+    sema_down (&holder->sema_donate);
+    if (holder->priority < cur->priority)
+    {
+      // donate priority
+      if (holder->donator_lock == NULL)
+        holder->ex_priority = holder->priority;
+      holder->donator_lock = lock;
+      holder->priority = cur->priority;
+    }
+    sema_up (&holder->sema_donate);
+  }
+
   sema_down (&lock->semaphore);
-  lock->holder = thread_current ();
+
+
+  // there is a race issue at here...
+  // If another thread try lock_acquire() before new holder sets lock->holder,
+  // priority donation can be skipped...
+  lock->holder = cur;
+
+  // need synchronization? when is lock_list used?
+  list_push_back (&cur->lock_list, &lock->elem);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -234,7 +287,19 @@ lock_release (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
+  struct thread *cur = thread_current ();
+
   lock->holder = NULL;
+  list_remove (&lock->elem);
+
+  sema_down (&cur->sema_donate);
+  if (cur->donator_lock == lock)
+  {
+    cur->donator_lock = NULL;
+    cur->priority = cur->ex_priority;
+    get_donation (cur);
+  }
+  sema_up (&cur->sema_donate);
   sema_up (&lock->semaphore);
 }
 

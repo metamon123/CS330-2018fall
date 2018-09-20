@@ -195,7 +195,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
       e = list_remove (e);
       thread_unblock (t);
       if (t->priority > cur->priority)
-          yield_on_return = true;
+        intr_yield_on_return ();
     }
     else
       break;
