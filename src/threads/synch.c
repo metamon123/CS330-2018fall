@@ -239,6 +239,8 @@ lock_acquire (struct lock *lock)
         holder->ex_priority = holder->priority;
       holder->donator_lock = lock;
       holder->priority = cur->priority;
+
+      // TODO: nested donation
     }
     sema_up (&holder->sema_donate);
   }

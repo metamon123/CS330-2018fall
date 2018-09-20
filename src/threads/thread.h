@@ -94,6 +94,7 @@ struct thread
     /* attributes related with priority donation */
     struct semaphore sema_donate; // sema for synchronization in priority donation
     struct lock *donator_lock; // NULL -> not donated
+    struct lock *waiting_lock;
     struct list lock_list;
     int ex_priority;
 
