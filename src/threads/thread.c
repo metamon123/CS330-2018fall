@@ -200,6 +200,8 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  if (thread_current ()->priority < t->priority)
+    thread_yield ();
   return tid;
 }
 
@@ -425,6 +427,9 @@ thread_set_priority (int new_priority)
    get_donoation (cur);
    */
   sema_up (&cur->sema_donate);
+
+  if (!list_empty (&ready_list) && list_entry (list_front (&ready_list), struct thread, elem)->priority > cur->priority)
+    thread_yield ();
 }
 
 /* Returns the current thread's priority. */
