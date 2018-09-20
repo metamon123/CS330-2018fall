@@ -169,6 +169,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   struct list_elem *e;
   struct thread *t;
+  struct thread *cur = thread_current ();
   ASSERT (intr_get_level () == INTR_OFF);
   ticks++;
 
@@ -193,6 +194,8 @@ timer_interrupt (struct intr_frame *args UNUSED)
       // ASSERT (t->status == THREAD_BLOCK);
       e = list_remove (e);
       thread_unblock (t);
+      if (t->priority > cur->priority)
+          yield_on_return = true;
     }
     else
       break;
