@@ -200,8 +200,12 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  /*
   if (thread_current ()->priority < t->priority)
     thread_yield ();
+  */
+  thread_preempt ();
+
   return tid;
 }
 
@@ -326,20 +330,17 @@ priority_higher (const struct list_elem *e1, const struct list_elem *e2, void *a
   return (t1->priority > t2->priority);
 }
 
-/*
 void
-donate_priority (struct thread *donator, struct thread *donatee, struct lock *lock)
+thread_preempt ()
 {
-  ASSERT (is_thread (donator) && is_thread (donatee));
-
-  if (donator->priority <= donatee->priority) return;
-
-  if (donatee->donator_lock == NULL)
-    donatee->ex_priority = donatee->priority;
-  donatee->donator_lock = lock;
+  if (!list_empty (&ready_list) && list_entry (list_front (&ready_list), struct thread, elem)->priority > thread_current ()->priority)
+  {
+    if (!intr_context ())
+      thread_yield ();
+    else
+      intr_yield_on_return ();
+  }
 }
-*/
-
 /*
  * Get donation for donatee by looking all waiters
  * donatee is blocking.
@@ -403,7 +404,8 @@ thread_set_priority (int new_priority)
    * 2) new_priority >= donated priority
    *    end donate & set priority as new_priority
    */
-  sema_down (&cur->sema_donate);
+  //sema_down (&cur->sema_donate);
+  enum intr_level old_level = intr_disable ();
   if (cur->donator_lock != NULL)
   {
       if (new_priority < cur->priority)
@@ -426,7 +428,8 @@ thread_set_priority (int new_priority)
    cur->priority = new_priority;
    get_donoation (cur);
    */
-  sema_up (&cur->sema_donate);
+  //sema_up (&cur->sema_donate);
+  intr_set_level (old_level);
 
   if (!list_empty (&ready_list) && list_entry (list_front (&ready_list), struct thread, elem)->priority > cur->priority)
     thread_yield ();

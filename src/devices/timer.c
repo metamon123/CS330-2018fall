@@ -194,8 +194,11 @@ timer_interrupt (struct intr_frame *args UNUSED)
       // ASSERT (t->status == THREAD_BLOCK);
       e = list_remove (e);
       thread_unblock (t);
+      /*
       if (t->priority > cur->priority)
         intr_yield_on_return ();
+      */
+      thread_preempt ();
     }
     else
       break;

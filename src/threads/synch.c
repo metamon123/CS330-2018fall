@@ -120,6 +120,8 @@ sema_up (struct semaphore *sema)
                                 struct thread, elem));
   sema->value++;
   intr_set_level (old_level);
+
+  thread_preempt ();
 }
 
 static void sema_test_helper (void *sema_);
@@ -181,6 +183,7 @@ lock_init (struct lock *lock)
 
   lock->holder = NULL;
   sema_init (&lock->semaphore, 1);
+  //sema_init (&lock->sema_access, 1);
 }
 
 /* Acquires LOCK, sleeping until it becomes available if
@@ -199,16 +202,15 @@ lock_acquire (struct lock *lock)
   ASSERT (!lock_held_by_current_thread (lock));
 
   struct thread *cur = thread_current ();
+  enum intr_level old_level = intr_disable ();
+
   struct thread *holder = lock->holder;
-  enum intr_level old_level;
 /*
   bool occupied;
   while ((occupied = !sema_try_down (&lock->semaphore)))
   {
-    old_level = intr_disable ();
     if (lock->holder == NULL)
     {
-      intr_set_level (old_level);
       continue;
     }
     holder = lock->holder;
@@ -223,18 +225,16 @@ lock_acquire (struct lock *lock)
       holder->priority = cur->priority;
     }
     sema_up (&holder->sema_donate);
-
-    intr_set_level (old_level);
     sema_down (&lock->semaphore);
   }
 */
 
   if (holder != NULL) 
   {
-    sema_down (&holder->sema_donate);
     if (holder->priority < cur->priority)
     {
       // donate priority
+      //printf ("donating... holder->priority : %d, cur->priority : %d\n", holder->priority, cur->priority);
       if (holder->donator_lock == NULL)
         holder->ex_priority = holder->priority;
       holder->donator_lock = lock;
@@ -242,7 +242,6 @@ lock_acquire (struct lock *lock)
 
       // TODO: nested donation
     }
-    sema_up (&holder->sema_donate);
   }
 
   sema_down (&lock->semaphore);
@@ -252,9 +251,9 @@ lock_acquire (struct lock *lock)
   // If another thread try lock_acquire() before new holder sets lock->holder,
   // priority donation can be skipped...
   lock->holder = cur;
-
-  // need synchronization? when is lock_list used?
   list_push_back (&cur->lock_list, &lock->elem);
+
+  intr_set_level (old_level);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -290,19 +289,20 @@ lock_release (struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
 
   struct thread *cur = thread_current ();
+  enum intr_level old_level = intr_disable ();
 
   lock->holder = NULL;
   list_remove (&lock->elem);
 
-  sema_down (&cur->sema_donate);
   if (cur->donator_lock == lock)
   {
     cur->donator_lock = NULL;
     cur->priority = cur->ex_priority;
     get_donation (cur);
   }
-  sema_up (&cur->sema_donate);
   sema_up (&lock->semaphore);
+
+  intr_set_level (old_level);
 }
 
 /* Returns true if the current thread holds LOCK, false
