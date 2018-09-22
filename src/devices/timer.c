@@ -129,7 +129,8 @@ timer_sleep (int64_t ticks)
   cur->awake_tick = start + ticks;
   
   old_level = intr_disable ();
-  list_insert_ordered (&sleep_list, &cur->elem, timer_less, NULL);
+  //list_insert_ordered (&sleep_list, &cur->elem, timer_less, NULL);
+  list_push_back (&sleep_list, &cur->elem);
   thread_block ();
 
   intr_set_level (old_level);
@@ -173,6 +174,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ASSERT (intr_get_level () == INTR_OFF);
   ticks++;
 
+  list_sort (&sleep_list, timer_less, NULL);
   for (e = list_begin (&sleep_list); e != list_end (&sleep_list);)
   {
     struct thread *t = list_entry (e, struct thread, elem);

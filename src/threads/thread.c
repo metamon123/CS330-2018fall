@@ -200,10 +200,6 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
-  /*
-  if (thread_current ()->priority < t->priority)
-    thread_yield ();
-  */
   thread_preempt ();
 
   return tid;
@@ -242,8 +238,8 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  //list_push_back (&ready_list, &t->elem);
-  list_insert_ordered (&ready_list, &t->elem, priority_higher, NULL);
+  list_push_back (&ready_list, &t->elem);
+  //list_insert_ordered (&ready_list, &t->elem, priority_higher, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -312,8 +308,8 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (curr != idle_thread) 
-    //list_push_back (&ready_list, &curr->elem);
-    list_insert_ordered (&ready_list, &curr->elem, priority_higher, NULL);
+    list_push_back (&ready_list, &curr->elem);
+    //list_insert_ordered (&ready_list, &curr->elem, priority_higher, NULL);
   curr->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -330,10 +326,20 @@ priority_higher (const struct list_elem *e1, const struct list_elem *e2, void *a
   return (t1->priority > t2->priority);
 }
 
+struct list_elem *
+list_max_priority (const struct list *list)
+{
+  struct list_elem *e = list_min (list, priority_higher, NULL);
+  if (e == list_end (list))
+    return NULL;
+  return e;
+}
+
 void
 thread_preempt ()
 {
-  if (!list_empty (&ready_list) && list_entry (list_front (&ready_list), struct thread, elem)->priority > thread_current ()->priority)
+  struct list_elem *e = list_max_priority (&ready_list);
+  if (!list_empty (&ready_list) && list_entry (e, struct thread, elem)->priority > thread_current ()->priority)
   {
     if (!intr_context ())
       thread_yield ();
@@ -366,7 +372,7 @@ get_donation (struct thread *donatee)
     lock = list_entry (e, struct lock, elem);
     if (!list_empty (&lock->semaphore.waiters))
     {
-      t = list_entry (list_front (&lock->semaphore.waiters), struct thread, elem);
+      t = list_entry (list_max_priority (&lock->semaphore.waiters), struct thread, elem);
       ASSERT (is_thread (t));
 
       if (t->priority >= max_priority)
@@ -431,7 +437,7 @@ thread_set_priority (int new_priority)
   //sema_up (&cur->sema_donate);
   intr_set_level (old_level);
 
-  if (!list_empty (&ready_list) && list_entry (list_front (&ready_list), struct thread, elem)->priority > cur->priority)
+  if (!list_empty (&ready_list) && list_entry (list_max_priority (&ready_list), struct thread, elem)->priority > cur->priority)
     thread_yield ();
 }
 
@@ -589,7 +595,11 @@ next_thread_to_run (void)
   if (list_empty (&ready_list))
     return idle_thread;
   else
-    return list_entry (list_pop_front (&ready_list), struct thread, elem);
+  {
+    struct list_elem *e = list_max_priority (&ready_list);
+    list_remove (e);
+    return list_entry (e, struct thread, elem);
+  }
 }
 
 /* Completes a thread switch by activating the new thread's page
