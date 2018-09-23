@@ -40,13 +40,15 @@ timer_less (const struct list_elem *e1, const struct list_elem *e2, void *aux UN
     struct thread *t2 = list_entry (e2, struct thread, elem);
 
     ASSERT (t1 != NULL && t2 != NULL);
-
+/*
     if (t1->awake_tick < t2->awake_tick)
       return true;
     else if (t1->awake_tick == t2->awake_tick)
       return (t1->priority > t2->priority);
     else
       return false;
+*/
+    return (t1->awake_tick < t2->awake_tick);
 }
 /* Sets up the 8254 Programmable Interval Timer (PIT) to
    interrupt PIT_FREQ times per second, and registers the
@@ -129,8 +131,8 @@ timer_sleep (int64_t ticks)
   cur->awake_tick = start + ticks;
   
   old_level = intr_disable ();
-  //list_insert_ordered (&sleep_list, &cur->elem, timer_less, NULL);
-  list_push_back (&sleep_list, &cur->elem);
+  list_insert_ordered (&sleep_list, &cur->elem, timer_less, NULL);
+  //list_push_back (&sleep_list, &cur->elem);
   thread_block ();
 
   intr_set_level (old_level);
@@ -174,7 +176,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ASSERT (intr_get_level () == INTR_OFF);
   ticks++;
 
-  list_sort (&sleep_list, timer_less, NULL);
+  //list_sort (&sleep_list, timer_less, NULL);
   for (e = list_begin (&sleep_list); e != list_end (&sleep_list);)
   {
     struct thread *t = list_entry (e, struct thread, elem);
