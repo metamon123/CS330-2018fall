@@ -239,7 +239,6 @@ thread_unblock (struct thread *t)
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
   list_push_back (&ready_list, &t->elem);
-  //list_insert_ordered (&ready_list, &t->elem, priority_higher, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -309,7 +308,6 @@ thread_yield (void)
   old_level = intr_disable ();
   if (curr != idle_thread) 
     list_push_back (&ready_list, &curr->elem);
-    //list_insert_ordered (&ready_list, &curr->elem, priority_higher, NULL);
   curr->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -347,6 +345,7 @@ thread_preempt ()
       intr_yield_on_return ();
   }
 }
+
 /*
  * Get donation for donatee by looking all waiters
  * donatee is blocking.
@@ -400,17 +399,16 @@ thread_set_priority (int new_priority)
 
   /*
    * 1. not donated
-   * 1) set priority
-   * 2) if needed, get priority donation from
-   *    waiting thread with max priority
+   *    1) set priority
+   *    2) if needed, get priority donation from
+   *        waiting thread with max priority
    * 2. donated
-   * 1) new_priority < donated priority
-   *    keep donated priority WITH setting ex_priority
-   *    to new_priority
-   * 2) new_priority >= donated priority
-   *    end donate & set priority as new_priority
+   *    1) new_priority < donated priority
+   *        keep donated priority WITH setting ex_priority
+   *        to new_priority
+   *    2) new_priority >= donated priority
+   *        end donate & set priority as new_priority
    */
-  //sema_down (&cur->sema_donate);
   enum intr_level old_level = intr_disable ();
   if (cur->donator_lock != NULL)
   {
@@ -434,7 +432,6 @@ thread_set_priority (int new_priority)
    cur->priority = new_priority;
    get_donoation (cur);
    */
-  //sema_up (&cur->sema_donate);
   intr_set_level (old_level);
 
   if (!list_empty (&ready_list) && list_entry (list_max_priority (&ready_list), struct thread, elem)->priority > cur->priority)
@@ -564,7 +561,6 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
 
-  sema_init (&t->sema_donate, 1);
   list_init (&t->lock_list);
   t->ex_priority = priority;
 

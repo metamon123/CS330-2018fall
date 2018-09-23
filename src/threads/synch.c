@@ -72,7 +72,6 @@ sema_down (struct semaphore *sema)
   while (sema->value == 0) 
     {
       list_push_back (&sema->waiters, &thread_current ()->elem);
-      //list_insert_ordered (&sema->waiters, &thread_current ()->elem, priority_higher, NULL);
       thread_block ();
     }
   sema->value--;
@@ -188,7 +187,6 @@ lock_init (struct lock *lock)
 
   lock->holder = NULL;
   sema_init (&lock->semaphore, 1);
-  //sema_init (&lock->sema_access, 1);
 }
 
 /* Acquires LOCK, sleeping until it becomes available if
@@ -209,39 +207,15 @@ lock_acquire (struct lock *lock)
   struct thread *cur = thread_current ();
   enum intr_level old_level = intr_disable ();
 
-  struct thread *holder = lock->holder;
   cur->waiting_lock = lock;
-/*
-  bool occupied;
-  while ((occupied = !sema_try_down (&lock->semaphore)))
-  {
-    if (lock->holder == NULL)
-    {
-      continue;
-    }
-    holder = lock->holder;
 
-    sema_down (&holder->sema_donate);
-    if (holder->priority < cur->priority)
-    {
-      // donate priority
-      if (holder->donator_lock = NULL)
-        holder->ex_priority = holder->priority;
-      holder->donator_lock = lock;
-      holder->priority = cur->priority;
-    }
-    sema_up (&holder->sema_donate);
-    sema_down (&lock->semaphore);
-  }
-*/
-  struct thread *donatee = holder;
+  struct thread *donatee = lock->holder;
   struct thread *donator = cur;
   struct lock *inter_lock = lock;
 
   while (donatee != NULL && donatee->priority < donator->priority) 
   {
-      // donate priority
-      //printf ("donating... holder->priority : %d, cur->priority : %d\n", holder->priority, cur->priority);
+    // donate priority
     if (donatee->donator_lock == NULL)
       donatee->ex_priority = donatee->priority;
     donatee->donator_lock = inter_lock;
@@ -257,9 +231,9 @@ lock_acquire (struct lock *lock)
   sema_down (&lock->semaphore);
 
 
-  // there is a race issue at here...
+  // there was a race issue here..
   // If another thread try lock_acquire() before new holder sets lock->holder,
-  // priority donation can be skipped...
+  // priority donation can be skipped... -> now solved by intr_disable()
   lock->holder = cur;
   cur->waiting_lock = NULL;
   list_push_back (&cur->lock_list, &lock->elem);
