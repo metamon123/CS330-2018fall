@@ -17,10 +17,11 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/synch.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
-
+static void set_arguments (void **_esp, char *fn_copy, size_t init_len);
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
@@ -30,6 +31,12 @@ process_execute (const char *file_name)
 {
   char *fn_copy;
   tid_t tid;
+  struct semaphore sema_start;
+  bool load_success = false;
+  size_t init_filename_len;
+  char *delim;
+
+  void *aux[4]; // share pointers with start_process
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
@@ -37,20 +44,51 @@ process_execute (const char *file_name)
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
+  init_filename_len = strlen(fn_copy);
 
+  printf ("initial argument : %s | init_filename_len : %d\n", fn_copy, init_filename_len);
+  delim = strchr (fn_copy, ' ');
+  if (delim != NULL)
+    *delim = 0; // set first occurance of ' ' -> '\0'
+
+  sema_init (&sema_start, 0);
+
+  aux[0] = fn_copy;
+  aux[1] = &sema_start;
+  aux[2] = &load_success;
+  aux[3] = init_filename_len; // This length doesn't include \0
+  
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (file_name, PRI_DEFAULT, start_process, (void *)aux);
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+  {
+    // start_process will not be executed
+    palloc_free_page (fn_copy);
+    return tid;
+  }
+
+  sema_down (&sema_start);
+  palloc_free_page (fn_copy); // -> start_process will free it
+  if (!load_success)
+  {
+    return TID_ERROR;
+  }
+
+  // list_push_back (&thread_current ()->child_list, tid2thread()->child_elem);
   return tid;
 }
 
 /* A thread function that loads a user process and makes it start
    running. */
 static void
-start_process (void *f_name)
+start_process (void *_aux)
 {
-  char *file_name = f_name;
+  void **aux = (void **)_aux;
+  char *fn_copy = aux[0];
+  struct semaphore *sema_startp = aux[1];
+  bool *load_success = aux[2];
+  size_t init_filename_len = aux[3];
+
   struct intr_frame if_;
   bool success;
 
@@ -59,12 +97,24 @@ start_process (void *f_name)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+  success = load (fn_copy, &if_.eip, &if_.esp);
 
+  printf ("load complete\n");
   /* If load failed, quit. */
-  palloc_free_page (file_name);
-  if (!success) 
+  //palloc_free_page (file_name);
+  if (!success)
+  {
+    printf ("load failed, exitting...\n");
+    *load_success = success;
+    sema_up (sema_startp);
     thread_exit ();
+  }
+
+  printf ("load succeed, setting arguments...\n");
+  set_arguments (&if_.esp, fn_copy, init_filename_len);
+  printf ("argument setting finished\n");
+  *load_success = success;
+  sema_up (sema_startp);
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -74,6 +124,78 @@ start_process (void *f_name)
      and jump to it. */
   asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
   NOT_REACHED ();
+}
+
+static void
+set_arguments (void **_esp, char *fn_copy, size_t init_len)
+{
+  // argument setting
+  char *adjusted_argv = fn_copy + init_len + 1;
+  char *adjusted_argv_stack, *cursor, *end_ptr;
+  size_t adjusted_len = 0;
+  int argc = 0;
+
+
+  cursor = fn_copy;
+  end_ptr = fn_copy + init_len + 1;
+
+  while (strchr (" ", *cursor) != NULL) cursor++;
+  while (cursor < end_ptr)
+  {
+    char *token = cursor;
+    size_t len;
+
+    while (strchr (" ", *cursor) == NULL) cursor++;
+
+    if (*cursor != '\0') *cursor = '\0';
+
+    len = strlen (token);
+    if (len > 0)
+    {
+      strlcpy (adjusted_argv + adjusted_len, token, len + 1);
+      argc++;
+      adjusted_len += len + 1;
+    }
+
+    cursor++;
+
+    while (strchr (" ", *cursor) != NULL) cursor++;
+  }
+
+  // copy adjusted_argv into user stack
+  *_esp -= adjusted_len;
+  adjusted_argv_stack = *_esp;
+  memcpy ((void *)adjusted_argv_stack, (const void *)adjusted_argv, adjusted_len);
+
+  // align to 4byte multiples
+  while ((int)(*_esp) % 4 != 0)
+  {
+    *_esp -= 1;
+    *(char *)(*_esp) = 0;
+  }
+
+  // set argv[]
+  int i;
+  *_esp -= 4 * (argc + 1);
+  cursor = adjusted_argv_stack;
+  for (i = 0; i < argc; ++i)
+  {
+    // iterate adjusted_argv_stack to get addresses of each argument
+    size_t len = strlen (cursor);
+    *((void **)(*_esp) + i) = cursor;
+    cursor += len + 1;
+  }
+  *((void **)(*_esp) + argc) = NULL;
+
+  *_esp -= 4;
+  *(void **)(*_esp) = *_esp + 4;
+
+  // set argc
+  *_esp -= 4;
+  *(int *)(*_esp) = argc;
+
+  // TODO: remove hex_dump later
+  hex_dump (*_esp, *_esp, PHYS_BASE - *_esp, true);
 }
 
 /* Waits for thread TID to die and returns its exit status.  If
@@ -86,8 +208,13 @@ start_process (void *f_name)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
+  if (child_tid == TID_ERROR)
+    return -1;
+
+  int exit_status;
+  while (1) {} // TODO: replace the infinite loop
   return -1;
 }
 
