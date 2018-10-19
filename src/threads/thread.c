@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include <hash.h>
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -70,6 +71,9 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
+
+// TODO: tid2thread()
+static struct hash thread_list; // tid -> struct thread *
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -181,6 +185,11 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
+
+#ifdef USERPROG
+  t->parent = thread_current ();
+  list_init (&t->child_list);
+#endif
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
