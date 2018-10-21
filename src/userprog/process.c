@@ -30,12 +30,11 @@ static void set_arguments (void **_esp, char *fn_copy, size_t init_len);
 tid_t
 process_execute (const char *file_name) 
 {
-  char *fn_copy;
+  char *fn_copy, *delim;
   tid_t tid;
   struct semaphore sema_start;
   bool load_success = false;
   size_t init_filename_len;
-  char *delim;
 
   void *aux[4]; // share pointers with start_process
 
@@ -63,7 +62,7 @@ process_execute (const char *file_name)
   tid = thread_create (fn_copy, PRI_DEFAULT, start_process, (void *)aux);
   if (tid == TID_ERROR)
   {
-    // start_process will not be executed
+    // start_process would not be executed
     palloc_free_page (fn_copy);
     return tid;
   }
@@ -77,7 +76,12 @@ process_execute (const char *file_name)
 
   struct thread *child = tid2thread (tid);
   ASSERT (child != NULL);
-  list_push_back (&thread_current ()->child_list, &child->child_elem);
+
+  struct thread *cur = thread_current();
+
+  lock_acquire (&cur->child_list_lock);
+  list_push_back (&cur->child_list, &child->child_elem);
+  lock_release (&cur->child_list_lock);
   // if above line is on thread_create, it will be problematic if one process tries consequent process_exec.
   return tid;
 }
@@ -223,6 +227,8 @@ process_wait (tid_t child_tid)
 
   if (child_tid == TID_ERROR) return -1;
 
+  lock_acquire (&cur->child_list_lock);
+  //printf ("loop starts\n");
   for (e = list_begin (&cur->child_list); e != list_end (&cur->child_list);
        e = list_next (e))
   {
@@ -235,13 +241,21 @@ process_wait (tid_t child_tid)
       break;
     }
   }
+  //printf ("loop ends\n");
+  lock_release (&cur->child_list_lock);
 
   if (t == NULL) return -1; // child_tid is not a child of cur.
 
   // printf ("waiting for child %d\n", child_tid);
   // struct thread *t = tid2thread (child_tid);
   sema_down (&t->sema_wait);
+  
   exit_status = t->exit_status; // we can assure that exit_status is completely set
+  
+  lock_acquire (&cur->child_list_lock);
+  list_remove (&t->child_elem);
+  lock_release (&cur->child_list_lock);
+
   sema_up (&t->sema_destroy);
   return exit_status;
 }
@@ -286,7 +300,14 @@ process_activate (void)
      interrupts. */
   tss_update ();
 }
-
+
+struct file *
+fd2file (int fd)
+{
+  struct thread *cur = thread_current ();
+  // TODO: iterate cur->filelist, and return appropriate struct file *
+  return NULL;
+}
 /* We load ELF binaries.  The following definitions are taken
    from the ELF specification, [ELF1], more-or-less verbatim.  */
 

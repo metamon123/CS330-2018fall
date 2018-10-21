@@ -9,6 +9,8 @@
 
 #include "threads/vaddr.h"
 #include "threads/init.h" // power_off
+#include "filesys/filesys.h"
+#include "filesys/file.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -60,8 +62,6 @@ bool check_ubuf (uint32_t address)
 void
 _exit (int status)
 {
-  // TODO
-  // - etc
   struct thread *cur = thread_current ();
   printf ("%s: exit(%d)\n", cur->name, status);
 
@@ -110,11 +110,9 @@ syscall_handler (struct intr_frame *f UNUSED)
   switch(syscall_num)
   {
     case SYS_HALT:
-        // printf ("SYS_HALT\n");
         power_off ();
         break;
     case SYS_EXIT:
-        // printf ("SYS_EXIT\n");
         if (check_uaddr (esp + 4, 4))
         {
           _exit (*(int *)(esp + 4));
@@ -122,32 +120,45 @@ syscall_handler (struct intr_frame *f UNUSED)
         }
         break;
     case SYS_EXEC:
-        // printf ("SYS_EXEC\n");
         if (!check_ubuf (esp + 4))
           break;
         f->eax = process_execute (*(const char **)(esp + 4));
         bad_exit = false;
         break;
     case SYS_WAIT:
+        if (!check_uaddr (esp + 4, 4))
+          break;
+        f->eax = process_wait (*(tid_t *)(esp + 4));
+        bad_exit = false;
         break;
     case SYS_CREATE:
+        if (!check_ubuf (esp + 4) || !check_uaddr (esp + 8))
+          break;
+        f->eax = filesys_create (*(const char **)(esp + 4), *(off_t *)(esp + 8));
+        bad_exit = false;
         break;
     case SYS_REMOVE:
+        if (!check_ubuf (esp + 4))
+          break;
+        f->eax = filesys_remove (*(const char **)(esp + 4));
+        bad_exit = false;
         break;
     case SYS_OPEN:
+        // TODO
         break;
     case SYS_FILESIZE:
+        if (!check_uaddr (esp + 4))
+          break;
+        // TODO
+        // f->eax = file_length (fd2file (*(int *)(esp + 4)));
+        // bad_exit = false;
         break;
     case SYS_READ:
         break;
     case SYS_WRITE:
-        // printf ("SYS_WRITE\n");
-        
-        if (!check_uaddr (esp + 4, 4)) break;
-        if (!check_uaddr (esp + 8, 4)) break;
-        if (!check_uaddr (esp + 12, 4)) break;
-        if (!check_uaddr (*(void **)(esp + 8), *(uint32_t *)(esp + 12))) break;
-
+        if (!check_uaddr (esp + 4, 4) || !check_uaddr (esp + 8, 4) || !check_uaddr (esp + 12, 4)
+            || !check_uaddr (*(void **)(esp + 8), *(uint32_t *)(esp + 12)))
+          break;
         f->eax = _write (*(int *)(esp + 4), *(const void **)(esp + 8), *(uint32_t *)(esp + 12));
         bad_exit = false;
         break;

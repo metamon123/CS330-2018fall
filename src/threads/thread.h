@@ -100,6 +100,7 @@ struct thread
     uint32_t *pagedir;                  /* Page directory. */
     
     struct thread *parent;
+    struct lock child_list_lock;
     struct list child_list;
     struct list_elem child_elem;
 
