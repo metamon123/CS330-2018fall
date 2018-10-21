@@ -1,6 +1,9 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
 #include <syscall-nr.h>
+#include <string.h>
+#include <stdint.h>
+#include <stdbool.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
@@ -13,7 +16,7 @@ static void syscall_handler (struct intr_frame *);
  * - Less than PHYS_BASE (0xc0000000)
  * - Larger than min(text area base address?)
  *   */
-bool verify_user_memory_access (uint32_t address, uint32_t size)
+bool check_uaddr (uint32_t address, uint32_t size)
 {
   if (!is_user_vaddr((const void *)address))
     return false;
@@ -42,13 +45,43 @@ bool verify_user_memory_access (uint32_t address, uint32_t size)
   return true;
 }
 
-static void
+bool check_ubuf (uint32_t address)
+{
+  const char *buf;
+
+  if (!check_uaddr (address, 4))
+    return false;
+
+  buf = *(const char **)address;
+
+  return check_uaddr (buf, strlen (buf) + 1);
+}
+
+void
 _exit (int status)
 {
   // TODO
-  // - convey exit_status to parent in some way
-  // - etc 
+  // - etc
+  struct thread *cur = thread_current ();
+  printf ("%s: exit(%d)\n", cur->name, status);
+
+  cur->exit_status = status;
   thread_exit ();
+}
+
+static int
+_write (int fd, const void *buffer, uint32_t size)
+{
+  if (fd == 1)
+  {
+    putbuf ((const char *)buffer, (size_t)size);
+    return size;
+  }
+  else
+  {
+    // TODO: implement complete write
+    return -1;
+  }
 }
 
 void
@@ -60,15 +93,16 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
-  printf ("system call!\n");
+  // printf ("system call!\n");
   uint32_t esp = (uint32_t)f->esp;
   int syscall_num; // assuming that sizeof(int) == 4
-
+  bool bad_exit = true;
   // esp check is necessary since user can control it
-  if (!verify_user_memory_access (esp, 4))
+  if (!check_uaddr (esp, 4))
   {
     // TODO: notify bad exit
-    thread_exit ();
+    //thread_exit ();
+    _exit (-1);
   }
 
   syscall_num = *(int *)esp;
@@ -76,37 +110,23 @@ syscall_handler (struct intr_frame *f UNUSED)
   switch(syscall_num)
   {
     case SYS_HALT:
+        // printf ("SYS_HALT\n");
         power_off ();
         break;
     case SYS_EXIT:
-        if (verify_user_memory_access (esp + 4, 4))
+        // printf ("SYS_EXIT\n");
+        if (check_uaddr (esp + 4, 4))
         {
           _exit (*(int *)(esp + 4));
-        }
-        else
-        {
-          // TODO: notify bad exit
-          thread_exit ();
+          bad_exit = false;
         }
         break;
     case SYS_EXEC:
-        bool bad_exit = true;
-        if (verify_user_memory_access (esp + 4, 4))
-        {
-          const char *cmd_line = *(const char **)(esp + 4);
-          if (verify_user_memory_access ((uint32_t)cmd_line,
-                                (uint32_t)strlen (cmd_line) + 1))
-          {
-            f->eax = process_execute (cmd_line);
-            bad_exit = false;
-          }
-        }
-
-        if (bad_exit)
-        {
-          // TODO: notify bad exit
-          thread_exit ();
-        }
+        // printf ("SYS_EXEC\n");
+        if (!check_ubuf (esp + 4))
+          break;
+        f->eax = process_execute (*(const char **)(esp + 4));
+        bad_exit = false;
         break;
     case SYS_WAIT:
         break;
@@ -121,6 +141,15 @@ syscall_handler (struct intr_frame *f UNUSED)
     case SYS_READ:
         break;
     case SYS_WRITE:
+        // printf ("SYS_WRITE\n");
+        
+        if (!check_uaddr (esp + 4, 4)) break;
+        if (!check_uaddr (esp + 8, 4)) break;
+        if (!check_uaddr (esp + 12, 4)) break;
+        if (!check_uaddr (*(void **)(esp + 8), *(uint32_t *)(esp + 12))) break;
+
+        f->eax = _write (*(int *)(esp + 4), *(const void **)(esp + 8), *(uint32_t *)(esp + 12));
+        bad_exit = false;
         break;
     case SYS_SEEK:
         break;
@@ -130,8 +159,11 @@ syscall_handler (struct intr_frame *f UNUSED)
         break;
     default:
         printf ("Invalid syscall number\n");
-        // TODO: notify bad exit
-        thread_exit ();
   }
-  // thread_exit ();
+  if (bad_exit)
+  {
+    // TODO: notify bad exit
+    //thread_exit ();
+    _exit (-1);
+  }
 }

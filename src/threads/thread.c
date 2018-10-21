@@ -29,6 +29,8 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+static struct hash thread_hashmap; // hashmap(<tid> -> <struct thread *>)
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -72,9 +74,33 @@ static void schedule (void);
 void schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
-// TODO: tid2thread()
-static struct hash thread_list; // tid -> struct thread *
+static unsigned
+thread_hash (const struct hash_elem *t_, void *aux UNUSED)
+{
+  const struct thread *t = hash_entry (t_, struct thread, thread_hash_elem);
+  return t->tid;
+}
 
+static bool
+thread_hash_less (const struct hash_elem *t1_, const struct hash_elem *t2_,
+                    void *aux UNUSED)
+{
+  const struct thread *t1 = hash_entry (t1_, struct thread, thread_hash_elem);
+  const struct thread *t2 = hash_entry (t2_, struct thread, thread_hash_elem);
+
+  return t1->tid < t2->tid;
+}
+
+struct thread *
+tid2thread (tid_t tid)
+{
+  struct thread t;
+  struct hash_elem *e;
+
+  t.tid = tid;
+  e = hash_find (&thread_hashmap, &t.thread_hash_elem);
+  return e != NULL ? hash_entry (e, struct thread, thread_hash_elem) : NULL;
+}
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -111,6 +137,10 @@ thread_start (void)
   /* Create the idle thread. */
   struct semaphore idle_started;
   sema_init (&idle_started, 0);
+
+  // hash_init is done here -> main thread is not in thread_hashmap (instead of thread_init, where thread_current cannot be called)
+  hash_init (&thread_hashmap, thread_hash, thread_hash_less, NULL);
+
   thread_create ("idle", PRI_MIN, idle, &idle_started);
 
   /* Start preemptive thread scheduling. */
@@ -185,10 +215,14 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
+  hash_insert (&thread_hashmap, &t->thread_hash_elem);
 
 #ifdef USERPROG
   t->parent = thread_current ();
-  list_init (&t->child_list);
+
+  t->exit_status = -1;
+  sema_init (&t->sema_wait, 0);
+  sema_init (&t->sema_destroy, 0);
 #endif
 
   /* Stack frame for kernel_thread(). */
@@ -263,7 +297,7 @@ struct thread *
 thread_current (void) 
 {
   struct thread *t = running_thread ();
-  
+
   /* Make sure T is really a thread.
      If either of these assertions fire, then your thread may
      have overflowed its stack.  Each thread has less than 4 kB
@@ -289,14 +323,18 @@ thread_exit (void)
 {
   ASSERT (!intr_context ());
 
+  struct thread *cur = thread_current ();
 #ifdef USERPROG
   process_exit ();
+  sema_up (&cur->sema_wait);
+  sema_down (&cur->sema_destroy);
 #endif
 
   /* Just set our status to dying and schedule another process.
      We will be destroyed during the call to schedule_tail(). */
   intr_disable ();
-  thread_current ()->status = THREAD_DYING;
+  hash_delete (&thread_hashmap, &cur->thread_hash_elem);
+  cur->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
 }
@@ -449,6 +487,10 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+
+#ifdef USERPROG
+  list_init (&t->child_list);
+#endif
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

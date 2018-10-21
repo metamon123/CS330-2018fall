@@ -22,6 +22,7 @@
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static void set_arguments (void **_esp, char *fn_copy, size_t init_len);
+
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
@@ -46,7 +47,7 @@ process_execute (const char *file_name)
   strlcpy (fn_copy, file_name, PGSIZE);
   init_filename_len = strlen(fn_copy);
 
-  printf ("initial argument : %s | init_filename_len : %d\n", fn_copy, init_filename_len);
+  // printf ("initial argument : %s | init_filename_len : %d\n", fn_copy, init_filename_len);
   delim = strchr (fn_copy, ' ');
   if (delim != NULL)
     *delim = 0; // set first occurance of ' ' -> '\0'
@@ -59,7 +60,7 @@ process_execute (const char *file_name)
   aux[3] = init_filename_len; // This length doesn't include \0
   
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, (void *)aux);
+  tid = thread_create (fn_copy, PRI_DEFAULT, start_process, (void *)aux);
   if (tid == TID_ERROR)
   {
     // start_process will not be executed
@@ -74,7 +75,10 @@ process_execute (const char *file_name)
     return TID_ERROR;
   }
 
-  // list_push_back (&thread_current ()->child_list, tid2thread()->child_elem);
+  struct thread *child = tid2thread (tid);
+  ASSERT (child != NULL);
+  list_push_back (&thread_current ()->child_list, &child->child_elem);
+  // if above line is on thread_create, it will be problematic if one process tries consequent process_exec.
   return tid;
 }
 
@@ -99,20 +103,20 @@ start_process (void *_aux)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (fn_copy, &if_.eip, &if_.esp);
 
-  printf ("load complete\n");
+  // printf ("load complete\n");
   /* If load failed, quit. */
   //palloc_free_page (file_name);
   if (!success)
   {
-    printf ("load failed, exitting...\n");
+    // printf ("load failed, exitting...\n");
     *load_success = success;
     sema_up (sema_startp);
     thread_exit ();
   }
 
-  printf ("load succeed, setting arguments...\n");
+  // printf ("load succeed, setting arguments...\n");
   set_arguments (&if_.esp, fn_copy, init_filename_len);
-  printf ("argument setting finished\n");
+  // printf ("argument setting finished\n");
   *load_success = success;
   sema_up (sema_startp);
 
@@ -194,8 +198,10 @@ set_arguments (void **_esp, char *fn_copy, size_t init_len)
   *_esp -= 4;
   *(int *)(*_esp) = argc;
 
+  // later return address will be set here
+  *_esp -= 4;
   // TODO: remove hex_dump later
-  hex_dump (*_esp, *_esp, PHYS_BASE - *_esp, true);
+  // hex_dump (*_esp, *_esp, PHYS_BASE - *_esp, true);
 }
 
 /* Waits for thread TID to die and returns its exit status.  If
@@ -210,12 +216,34 @@ set_arguments (void **_esp, char *fn_copy, size_t init_len)
 int
 process_wait (tid_t child_tid) 
 {
-  if (child_tid == TID_ERROR)
-    return -1;
-
+  struct list_elem *e;
+  struct thread *t = NULL;
+  struct thread *cur = thread_current ();
   int exit_status;
-  while (1) {} // TODO: replace the infinite loop
-  return -1;
+
+  if (child_tid == TID_ERROR) return -1;
+
+  for (e = list_begin (&cur->child_list); e != list_end (&cur->child_list);
+       e = list_next (e))
+  {
+    struct thread *_t = list_entry (e, struct thread, child_elem);
+    ASSERT (_t != NULL);
+
+    if (_t->tid == child_tid)
+    {
+      t = _t;
+      break;
+    }
+  }
+
+  if (t == NULL) return -1; // child_tid is not a child of cur.
+
+  // printf ("waiting for child %d\n", child_tid);
+  // struct thread *t = tid2thread (child_tid);
+  sema_down (&t->sema_wait);
+  exit_status = t->exit_status; // we can assure that exit_status is completely set
+  sema_up (&t->sema_destroy);
+  return exit_status;
 }
 
 /* Free the current process's resources. */
