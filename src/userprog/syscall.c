@@ -132,7 +132,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         bad_exit = false;
         break;
     case SYS_CREATE:
-        if (!check_ubuf (esp + 4) || !check_uaddr (esp + 8))
+        if (!check_ubuf (esp + 4) || !check_uaddr (esp + 8, 4))
           break;
         f->eax = filesys_create (*(const char **)(esp + 4), *(off_t *)(esp + 8));
         bad_exit = false;
@@ -147,7 +147,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         // TODO
         break;
     case SYS_FILESIZE:
-        if (!check_uaddr (esp + 4))
+        if (!check_uaddr (esp + 4, 4))
           break;
         // TODO
         // f->eax = file_length (fd2file (*(int *)(esp + 4)));
