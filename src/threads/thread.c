@@ -223,6 +223,11 @@ thread_create (const char *name, int priority,
   t->exit_status = -1;
   sema_init (&t->sema_wait, 0);
   sema_init (&t->sema_destroy, 0);
+
+  t->next_fd = 2;
+  lock_init (&t->fd_lock);
+  list_init (&t->file_list);
+  t->executable = NULL;
 #endif
 
   /* Stack frame for kernel_thread(). */

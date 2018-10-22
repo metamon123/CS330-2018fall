@@ -18,6 +18,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "threads/synch.h"
+#include "threads/malloc.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -267,6 +268,20 @@ process_exit (void)
   struct thread *curr = thread_current ();
   uint32_t *pd;
 
+  struct list_elem *e;
+
+  e = list_begin (&curr->file_list);
+  while (e != list_end (&curr->file_list))
+  {
+    struct fd_elem *fdelem = list_entry (e, struct fd_elem, list_elem);
+
+    ASSERT (fdelem != NULL);
+
+    e = list_remove (e);
+    file_close (fdelem->file);
+    free (fdelem);
+  }
+
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = curr->pagedir;
@@ -301,12 +316,46 @@ process_activate (void)
   tss_update ();
 }
 
+struct fd_elem *
+fd_lookup (int fd)
+{
+  struct thread *cur = thread_current ();
+  // iterate cur->filelist, and return appropriate struct fd_elem *
+  struct list_elem *e;
+  for (e = list_begin (&cur->file_list); e != list_end (&cur->file_list);
+       e = list_next (e))
+  {
+    struct fd_elem *fdelem = list_entry (e, struct fd_elem, list_elem);
+    ASSERT (fdelem != NULL);
+
+    if (fdelem->fd == fd)
+      return fdelem;
+  }
+  return NULL;
+}
+
 struct file *
 fd2file (int fd)
 {
-  struct thread *cur = thread_current ();
-  // TODO: iterate cur->filelist, and return appropriate struct file *
+  struct fd_elem *fdelem = fd_lookup (fd);
+  if (fdelem != NULL)
+    return fdelem->file;
   return NULL;
+}
+
+int
+allocate_fd (void)
+{
+  struct thread *cur = thread_current ();
+  int return_fd;
+
+  lock_acquire (&cur->fd_lock); // may not be needed due to filesys_lock
+
+  return_fd = cur->next_fd;
+  cur->next_fd++;
+
+  lock_release (&cur->fd_lock);
+  return return_fd;
 }
 /* We load ELF binaries.  The following definitions are taken
    from the ELF specification, [ELF1], more-or-less verbatim.  */
@@ -405,6 +454,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
       goto done; 
     }
 
+//  t->executable = file;
+//  list_push_back (&t->file_list, &list_elem);
+//  above lines will be needed on Project 3
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)

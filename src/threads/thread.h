@@ -107,6 +107,11 @@ struct thread
     int exit_status;
     struct semaphore sema_wait;
     struct semaphore sema_destroy;      // trigger for process harvesting
+
+    int next_fd;
+    struct lock fd_lock;
+    struct list file_list;
+    struct file *executable;
 #endif
 
     struct hash_elem thread_hash_elem;

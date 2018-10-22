@@ -1,4 +1,5 @@
 #include "userprog/syscall.h"
+#include "userprog/process.h"
 #include <stdio.h>
 #include <syscall-nr.h>
 #include <string.h>
@@ -11,6 +12,7 @@
 #include "threads/init.h" // power_off
 #include "filesys/filesys.h"
 #include "filesys/file.h"
+#include "threads/malloc.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -18,7 +20,8 @@ static void syscall_handler (struct intr_frame *);
  * - Less than PHYS_BASE (0xc0000000)
  * - Larger than min(text area base address?)
  *   */
-bool check_uaddr (uint32_t address, uint32_t size)
+static bool
+check_uaddr (uint32_t address, uint32_t size)
 {
   if (!is_user_vaddr((const void *)address))
     return false;
@@ -47,7 +50,8 @@ bool check_uaddr (uint32_t address, uint32_t size)
   return true;
 }
 
-bool check_ubuf (uint32_t address)
+static bool
+check_ubuf (uint32_t address)
 {
   const char *buf;
 
@@ -67,6 +71,40 @@ _exit (int status)
 
   cur->exit_status = status;
   thread_exit ();
+}
+
+int
+_open (const char *filename)
+{
+  struct file *file = filesys_open (filename);
+  if (file == NULL)
+    return -1;
+
+  struct fd_elem *fdelem = (struct fd_elem *)malloc (sizeof (struct fd_elem));
+  if (fdelem == NULL)
+  {
+    file_close (file);
+    return -1;
+  }
+
+  fdelem->file = file;
+  fdelem->fd = allocate_fd ();
+  list_push_back (&thread_current ()->file_list, &fdelem->list_elem);
+  return fdelem->fd;
+}
+
+void
+_close (int fd)
+{
+  struct fd_elem *fdelem = fd_lookup (fd);
+  if (fdelem == NULL)
+    return;
+
+  ASSERT (fdelem->file != NULL);
+
+  list_remove (&fdelem->list_elem); // remove from process's filelist
+  file_close (fdelem->file);
+  free (fdelem);
 }
 
 static int
@@ -144,14 +182,16 @@ syscall_handler (struct intr_frame *f UNUSED)
         bad_exit = false;
         break;
     case SYS_OPEN:
-        // TODO
+        if (!check_ubuf (esp + 4))
+          break;
+        f->eax = _open (*(const char **)(esp + 4));
+        bad_exit = false;
         break;
     case SYS_FILESIZE:
         if (!check_uaddr (esp + 4, 4))
           break;
-        // TODO
-        // f->eax = file_length (fd2file (*(int *)(esp + 4)));
-        // bad_exit = false;
+        f->eax = file_length (fd2file (*(int *)(esp + 4)));
+        bad_exit = false;
         break;
     case SYS_READ:
         break;
@@ -163,10 +203,22 @@ syscall_handler (struct intr_frame *f UNUSED)
         bad_exit = false;
         break;
     case SYS_SEEK:
+        if (!check_uaddr (esp + 4, 4) || !check_uaddr (esp + 8, 4))
+          break;
+        file_seek (fd2file (*(int *)(esp + 4)), *(uint32_t *)(esp + 8));
+        bad_exit = false;
         break;
     case SYS_TELL:
+        if (!check_uaddr (esp + 4, 4))
+          break;
+        f->eax = file_tell (fd2file (*(int *)(esp + 4)));
+        bad_exit = false;
         break;
     case SYS_CLOSE:
+        if (!check_uaddr (esp + 4, 4))
+          break;
+        _close (*(int *)(esp + 4));
+        bad_exit = false;
         break;
     default:
         printf ("Invalid syscall number\n");
