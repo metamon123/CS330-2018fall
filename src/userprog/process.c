@@ -278,6 +278,16 @@ process_exit (void)
   }
   filesys_lock_release ();
 
+  // For orphan processes
+  for (e = list_begin (&curr->child_list); e != list_end (&curr->child_list);
+       e = list_next (e))
+  {
+    struct thread *_t = list_entry (e, struct thread, child_elem);
+    ASSERT (_t != NULL);
+
+    sema_up (&_t->sema_destroy);
+  }
+
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = curr->pagedir;
@@ -351,6 +361,9 @@ allocate_fd (void)
   cur->next_fd++;
 
   lock_release (&cur->fd_lock);
+
+  if (cur->next_fd == 0)
+    PANIC ("Too many fds!\n");
   return return_fd;
 }
 /* We load ELF binaries.  The following definitions are taken
