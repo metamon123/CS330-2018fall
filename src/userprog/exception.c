@@ -150,6 +150,19 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
+  // release all lock which current thread is holding
+  struct list_elem *e;
+  struct thread *cur = thread_current ();
+  for (e = list_begin (&cur->lock_list); e != list_end (&cur->lock_list);
+       e = list_next (e))
+  {
+    struct lock *lock = list_entry (e, struct lock, elem);
+
+    ASSERT (lock != NULL);
+
+    lock_release (lock);
+  }
+  // TODO? free all malloc'd chunk current user process was holding
   _exit (-1);
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to

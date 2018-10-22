@@ -80,9 +80,7 @@ process_execute (const char *file_name)
 
   struct thread *cur = thread_current();
 
-  lock_acquire (&cur->child_list_lock);
   list_push_back (&cur->child_list, &child->child_elem);
-  lock_release (&cur->child_list_lock);
   // if above line is on thread_create, it will be problematic if one process tries consequent process_exec.
   return tid;
 }
@@ -228,7 +226,6 @@ process_wait (tid_t child_tid)
 
   if (child_tid == TID_ERROR) return -1;
 
-  lock_acquire (&cur->child_list_lock);
   //printf ("loop starts\n");
   for (e = list_begin (&cur->child_list); e != list_end (&cur->child_list);
        e = list_next (e))
@@ -243,7 +240,6 @@ process_wait (tid_t child_tid)
     }
   }
   //printf ("loop ends\n");
-  lock_release (&cur->child_list_lock);
 
   if (t == NULL) return -1; // child_tid is not a child of cur.
 
@@ -253,9 +249,7 @@ process_wait (tid_t child_tid)
   
   exit_status = t->exit_status; // we can assure that exit_status is completely set
   
-  lock_acquire (&cur->child_list_lock);
   list_remove (&t->child_elem);
-  lock_release (&cur->child_list_lock);
 
   sema_up (&t->sema_destroy);
   return exit_status;
@@ -270,6 +264,7 @@ process_exit (void)
 
   struct list_elem *e;
 
+  filesys_lock_acquire ();
   e = list_begin (&curr->file_list);
   while (e != list_end (&curr->file_list))
   {
@@ -281,6 +276,7 @@ process_exit (void)
     file_close (fdelem->file);
     free (fdelem);
   }
+  filesys_lock_release ();
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -447,6 +443,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   process_activate ();
 
   /* Open executable file. */
+  filesys_lock_acquire ();
   file = filesys_open (file_name);
   if (file == NULL) 
     {
@@ -454,9 +451,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
       goto done; 
     }
 
-//  t->executable = file;
-//  list_push_back (&t->file_list, &list_elem);
-//  above lines will be needed on Project 3
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -536,11 +530,22 @@ load (const char *file_name, void (**eip) (void), void **esp)
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
 
+  struct fd_elem *fdelem = (struct fd_elem *)malloc (sizeof (struct fd_elem));
+  if (fdelem == NULL)
+  {
+    goto done;
+  }
+  fdelem->file = file;
+  fdelem->fd = allocate_fd ();
+  list_push_back (&t->file_list, &fdelem->list_elem);
+
   success = true;
+  file_deny_write (file);
 
  done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
+  if (!success) file_close (file);
+  filesys_lock_release ();
   return success;
 }
 

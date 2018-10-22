@@ -13,6 +13,7 @@
 #include "filesys/filesys.h"
 #include "filesys/file.h"
 #include "threads/malloc.h"
+#include "devices/input.h" // input_getc
 
 static void syscall_handler (struct intr_frame *);
 
@@ -73,7 +74,7 @@ _exit (int status)
   thread_exit ();
 }
 
-int
+static int
 _open (const char *filename)
 {
   struct file *file = filesys_open (filename);
@@ -93,7 +94,7 @@ _open (const char *filename)
   return fdelem->fd;
 }
 
-void
+static void
 _close (int fd)
 {
   struct fd_elem *fdelem = fd_lookup (fd);
@@ -108,6 +109,27 @@ _close (int fd)
 }
 
 static int
+_read (int fd, const void *buffer, uint32_t size)
+{
+  if (fd == 0)
+  {
+    int i;
+    for (i = 0; i < size; ++i)
+    {
+      *(char *)(buffer + size) = input_getc ();
+    }
+    return size;
+  }
+  else
+  {
+    struct file *file = fd2file (fd);
+    if (file == NULL)
+      return -1;
+    return file_read (file, buffer, size);
+  }
+}
+
+static int
 _write (int fd, const void *buffer, uint32_t size)
 {
   if (fd == 1)
@@ -117,8 +139,10 @@ _write (int fd, const void *buffer, uint32_t size)
   }
   else
   {
-    // TODO: implement complete write
-    return -1;
+    struct file *file = fd2file (fd);
+    if (file == NULL)
+      return -1;
+    return file_write (file, buffer, size);
   }
 }
 
@@ -172,19 +196,25 @@ syscall_handler (struct intr_frame *f UNUSED)
     case SYS_CREATE:
         if (!check_ubuf (esp + 4) || !check_uaddr (esp + 8, 4))
           break;
+        filesys_lock_acquire ();
         f->eax = filesys_create (*(const char **)(esp + 4), *(off_t *)(esp + 8));
+        filesys_lock_release ();
         bad_exit = false;
         break;
     case SYS_REMOVE:
         if (!check_ubuf (esp + 4))
           break;
+        filesys_lock_acquire ();
         f->eax = filesys_remove (*(const char **)(esp + 4));
+        filesys_lock_release ();
         bad_exit = false;
         break;
     case SYS_OPEN:
         if (!check_ubuf (esp + 4))
           break;
+        filesys_lock_acquire ();
         f->eax = _open (*(const char **)(esp + 4));
+        filesys_lock_release ();
         bad_exit = false;
         break;
     case SYS_FILESIZE:
@@ -194,18 +224,29 @@ syscall_handler (struct intr_frame *f UNUSED)
         bad_exit = false;
         break;
     case SYS_READ:
+        if (!check_uaddr (esp + 4, 4) || !check_uaddr (esp + 8, 4) || !check_uaddr (esp + 12, 4)
+            || !check_uaddr (*(void **)(esp + 8), *(uint32_t *)(esp + 12)))
+          break;
+        filesys_lock_acquire ();
+        f->eax = _read (*(int *)(esp + 4), *(const void **)(esp + 8), *(uint32_t *)(esp + 12));
+        filesys_lock_release ();
+        bad_exit = false;
         break;
     case SYS_WRITE:
         if (!check_uaddr (esp + 4, 4) || !check_uaddr (esp + 8, 4) || !check_uaddr (esp + 12, 4)
             || !check_uaddr (*(void **)(esp + 8), *(uint32_t *)(esp + 12)))
           break;
+        filesys_lock_acquire ();
         f->eax = _write (*(int *)(esp + 4), *(const void **)(esp + 8), *(uint32_t *)(esp + 12));
+        filesys_lock_release ();
         bad_exit = false;
         break;
     case SYS_SEEK:
         if (!check_uaddr (esp + 4, 4) || !check_uaddr (esp + 8, 4))
           break;
+        filesys_lock_acquire ();
         file_seek (fd2file (*(int *)(esp + 4)), *(uint32_t *)(esp + 8));
+        filesys_lock_release ();
         bad_exit = false;
         break;
     case SYS_TELL:
@@ -217,7 +258,9 @@ syscall_handler (struct intr_frame *f UNUSED)
     case SYS_CLOSE:
         if (!check_uaddr (esp + 4, 4))
           break;
+        filesys_lock_acquire ();
         _close (*(int *)(esp + 4));
+        filesys_lock_release ();
         bad_exit = false;
         break;
     default:

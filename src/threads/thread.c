@@ -40,6 +40,8 @@ static struct thread *initial_thread;
 /* Lock used by allocate_tid(). */
 static struct lock tid_lock;
 
+static struct lock filesys_lock;
+
 /* Stack frame for kernel_thread(). */
 struct kernel_thread_frame 
   {
@@ -101,6 +103,18 @@ tid2thread (tid_t tid)
   e = hash_find (&thread_hashmap, &t.thread_hash_elem);
   return e != NULL ? hash_entry (e, struct thread, thread_hash_elem) : NULL;
 }
+
+void
+filesys_lock_acquire (void)
+{
+  lock_acquire (&filesys_lock);
+}
+
+void
+filesys_lock_release (void)
+{
+  lock_release (&filesys_lock);
+}
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -120,6 +134,7 @@ thread_init (void)
   ASSERT (intr_get_level () == INTR_OFF);
 
   lock_init (&tid_lock);
+  lock_init (&filesys_lock);
   list_init (&ready_list);
 
   /* Set up a thread structure for the running thread. */
@@ -493,6 +508,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
 
+  list_init (&t->lock_list);
 #ifdef USERPROG
   lock_init (&t->child_list_lock);
   list_init (&t->child_list);

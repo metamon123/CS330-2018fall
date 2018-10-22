@@ -95,6 +95,7 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
+    struct list lock_list;
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -152,5 +153,7 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
+void filesys_lock_acquire (void);
+void filesys_lock_release (void);
 struct thread *tid2thread (tid_t);
 #endif /* threads/thread.h */
