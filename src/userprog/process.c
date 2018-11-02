@@ -20,6 +20,10 @@
 #include "threads/synch.h"
 #include "threads/malloc.h"
 
+#ifdef VM
+#include "vm/page.h"
+#endif
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static void set_arguments (void **_esp, char *fn_copy, size_t init_len);
@@ -99,6 +103,9 @@ start_process (void *_aux)
   struct intr_frame if_;
   bool success;
 
+#ifdef VM
+//  spt_init ();
+#endif
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
@@ -120,6 +127,7 @@ start_process (void *_aux)
   // printf ("load succeed, setting arguments...\n");
   set_arguments (&if_.esp, fn_copy, init_filename_len);
   // printf ("argument setting finished\n");
+
   *load_success = success;
   sema_up (sema_startp);
 

@@ -7,6 +7,10 @@
 #include <hash.h>
 #include "threads/synch.h"
 
+#ifdef VM
+#include "vm/page.h"
+#endif
+
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -113,6 +117,10 @@ struct thread
     struct lock fd_lock;
     struct list file_list;
     struct file *executable;
+#endif
+
+#ifdef VM
+    struct spt spt;
 #endif
 
     struct hash_elem thread_hash_elem;
