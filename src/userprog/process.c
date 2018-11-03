@@ -296,6 +296,8 @@ process_exit (void)
     sema_up (&_t->sema_destroy);
   }
 
+  // TODO: spt_destroy (); -> free spt/spte structure & corresponding frame_entry, frame
+
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = curr->pagedir;

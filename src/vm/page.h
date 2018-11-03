@@ -2,6 +2,7 @@
 #include "threads/synch.h"
 #include <hash.h>
 #include <inttypes.h>
+#include "vm/frame.h"
 
 
 // MEM : page is in physical memory
@@ -21,6 +22,10 @@ struct spt_entry {
 
     //bool is_exist;
     enum location loc;
+
+    void *upage;
+    struct frame_entry *fe;
+
     bool writable;
 };
 

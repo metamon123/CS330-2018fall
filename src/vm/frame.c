@@ -38,10 +38,13 @@ void *frame_alloc ()
     return frame;
 }
 
+// Can be called by non fe->spte->owner process -> spt lock needed?
 void frame_free (struct frame_entry *fe)
 {
     ASSERT (fe != NULL);
     list_remove (&fe->elem);
+    // maybe spt lock will be needed
+    pagedir_clear_page (fe->spte->spt->owner->pagedir, fe->spte->upage);
     palloc_free_page (frame);
     free (fe);
 }
