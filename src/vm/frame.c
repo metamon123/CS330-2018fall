@@ -11,8 +11,8 @@ void frame_init ()
   lock_init (&frame_lock);
 }
 
-//void frame_alloc (struct spt_entry *spte)
-void *frame_alloc ()
+// TODO: void frame_alloc (enum palloc_flags flag, struct spt_entry *spte)
+struct frame_entry *frame_alloc (enum palloc_flags flag)
 {
     // TODO: Acquire frame_lock in somewhere
 
@@ -23,8 +23,9 @@ void *frame_alloc ()
         return NULL;
     }
 
-    void *frame = palloc_get_page (PAL_USER);
-    if (frame == NULL)
+    ASSERT (flag & PAL_USER); // frame is only for user pool
+    void *kpage = palloc_get_page (flag);
+    if (kpage == NULL)
     {
         // TODO: frame evict and alloc
         printf ("[ frame_alloc() ] User pool is full & frame_evict is not implemented yet\n");
@@ -32,10 +33,11 @@ void *frame_alloc ()
         return NULL;
     }
 
-    fe->frame = frame;
+    fe->kpage = kpage;
+    // TODO: set spte
     list_push_back (&frame_list, fe->elem);
 
-    return frame;
+    return fe;
 }
 
 // Can be called by non fe->spte->owner process -> spt lock needed?
@@ -44,7 +46,7 @@ void frame_free (struct frame_entry *fe)
     ASSERT (fe != NULL);
     list_remove (&fe->elem);
     // maybe spt lock will be needed
-    pagedir_clear_page (fe->spte->spt->owner->pagedir, fe->spte->upage);
-    palloc_free_page (frame);
+    // pagedir_clear_page (fe->spte->spt->owner->pagedir, fe->spte->upage);
+    palloc_free_page (fe->kpage);
     free (fe);
 }

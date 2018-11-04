@@ -20,14 +20,21 @@ struct spt_entry {
     struct spt *spt;
     // spte can access its parent spt hash easily
 
-    //bool is_exist;
-    enum location loc;
-
     void *upage;
+    enum location location;
+
+    // In physical memory
     struct frame_entry *fe;
 
+    // In swap disk
+    // uint32_t(?) swap_slot
+
     bool writable;
+
+    struct hash_elem hash_elem;
 };
 
 void spt_init ();
 void spt_destroy ();
+bool install_spte (struct spt *spt, struct spt_entry *spte);
+struct spt_entry *get_spte (struct spt *spt, void *upage);

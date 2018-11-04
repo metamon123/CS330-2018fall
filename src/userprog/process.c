@@ -21,6 +21,7 @@
 #include "threads/malloc.h"
 
 #ifdef VM
+#include "vm/frame.h"
 #include "vm/page.h"
 #endif
 
@@ -104,7 +105,7 @@ start_process (void *_aux)
   bool success;
 
 #ifdef VM
-//  spt_init ();
+  spt_init ();
 #endif
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -296,7 +297,9 @@ process_exit (void)
     sema_up (&_t->sema_destroy);
   }
 
-  // TODO: spt_destroy (); -> free spt/spte structure & corresponding frame_entry, frame
+  spt_destroy (); // free all spte structure & corresponding frame_entry / frame / swap slot
+  // spt structure will not be freed yet,
+  // since its on struct thread (not malloc'd)
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -651,13 +654,13 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
          and zero the final PAGE_ZERO_BYTES bytes. */
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
-
-      /* Get a page of memory. */
+/*
+      // Get a page of memory.
       uint8_t *kpage = palloc_get_page (PAL_USER);
       if (kpage == NULL)
         return false;
 
-      /* Load this page. */
+      // Load this page.
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
         {
           palloc_free_page (kpage);
@@ -665,14 +668,38 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         }
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
-      /* Add the page to the process's address space. */
+      // Add the page to the process's address space.
       if (!install_page (upage, kpage, writable)) 
         {
           palloc_free_page (kpage);
           return false; 
         }
+*/
+      // TODO on 3-2
+      // do special handling for the case where
+      // page_zero_bytes == PGSIZE
 
-      /* Advance. */
+      // TODO on 3-1
+      // frame_alloc (PAL_USER, spte)
+      struct frame_entry *fe = frame_alloc (PAL_USER);
+      if (fe == NULL)
+          return false;
+      
+      if (file_read (file, fe->kpage, page_read_bytes) != (int) page_read_bytes)
+      {
+          frame_free (fe);
+          return false;
+      }
+
+      memset (fe->kpage + page_read_bytes, 0, page_zero_bytes);
+
+      if (!install_page (upage, fe->kpage, writable))
+      {
+          frame_free (fe);
+          return false;
+      }
+
+      // Advance.
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
@@ -685,6 +712,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (void **esp) 
 {
+/*
   uint8_t *kpage;
   bool success = false;
 
@@ -697,6 +725,20 @@ setup_stack (void **esp)
       else
         palloc_free_page (kpage);
     }
+  return success;
+*/
+  struct frame_entry *fe;
+  bool success = false;
+
+  fe = frame_alloc (PAL_USER | PAL_ZERO);
+  if (fe != NULL)
+  {
+      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, fe->kpage, true);
+      if (success)
+          *esp = PHYS_BASE;
+      else
+          frame_free (fe);
+  }
   return success;
 }
 

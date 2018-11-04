@@ -12,7 +12,7 @@ struct lock frame_lock;
 struct frame_entry
 {
     struct list_elem elem;
-    void *frame; // kernel vaddr of physicall addr of the frame
+    void *kpage; // kernel vaddr of physicall addr of the frame
     struct spt_entry *spte;
     //bool writable;
     // don't check writable from spte
