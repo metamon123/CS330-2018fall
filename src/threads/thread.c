@@ -345,9 +345,12 @@ thread_exit (void)
 
   struct thread *cur = thread_current ();
 #ifdef USERPROG
-  process_exit ();
-  sema_up (&cur->sema_wait);
-  sema_down (&cur->sema_destroy);
+  if (cur->is_process)
+  {
+    process_exit ();
+    sema_up (&cur->sema_wait);
+    sema_down (&cur->sema_destroy);
+  }
 #endif
 
   /* Just set our status to dying and schedule another process.
@@ -510,6 +513,8 @@ init_thread (struct thread *t, const char *name, int priority)
 
   list_init (&t->lock_list);
 #ifdef USERPROG
+  t->is_process = false;
+  t->pagedir = NULL;
   lock_init (&t->child_list_lock);
   list_init (&t->child_list);
 #endif

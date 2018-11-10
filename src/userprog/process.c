@@ -104,6 +104,7 @@ start_process (void *_aux)
   struct intr_frame if_;
   bool success;
 
+  thread_current ()->is_process = true;
 #ifdef VM
   spt_init ();
 #endif
@@ -646,6 +647,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
+  struct thread *cur = thread_current ();
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
@@ -680,14 +682,33 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       // page_zero_bytes == PGSIZE
 
       // TODO on 3-1
-      // frame_alloc (PAL_USER, spte)
-      struct frame_entry *fe = frame_alloc (PAL_USER);
+
+      struct spt_entry *spte = (struct spt_entry *) malloc (sizeof struct spt_entry);
+      spte->spt = &cur->spt;
+      spte->upage = upage;
+      spte->location = NONE;
+      spte->fe = NULL;
+      spte->writable = writable;
+      // spte->hash_elem (contains list_elem) does not need to be initialize. (list_insert does it)
+
+      lock_acquire (&frame_lock);
+      struct frame_entry *fe = frame_alloc (PAL_USER, spte);
+      // lock_release (&frame_lock);
+
       if (fe == NULL)
+      {
+          lock_release (&frame_lock);
+          free (spte);
           return false;
+      }
       
+      // Other process can try to swap out the frame while I'm setting it...
+      // Do lock? or Pinning on the frame?
       if (file_read (file, fe->kpage, page_read_bytes) != (int) page_read_bytes)
       {
           frame_free (fe);
+          lock_release (&frame_lock);
+          free (spte);
           return false;
       }
 
@@ -696,8 +717,29 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       if (!install_page (upage, fe->kpage, writable))
       {
           frame_free (fe);
+          lock_release (&frame_lock);
+          free (spte);
           return false;
       }
+
+      // frame alloc -> success
+      // file read -> success
+      // install to pagedir -> success
+
+      spte->fe = fe;
+      spte->location = MEM;
+      if (!install_spte (spte->spt, spte))
+      {
+          // it fails if
+          // there already exists a spte with same upage
+          frame_free (fe);
+          lock_release (&frame_lock);
+          free (spte);
+          return false;
+      }
+      fe->is_pin = false;
+
+      lock_release (&frame_lock);
 
       // Advance.
       read_bytes -= page_read_bytes;
@@ -727,18 +769,51 @@ setup_stack (void **esp)
     }
   return success;
 */
-  struct frame_entry *fe;
+  struct thread *cur = thread_current ();
   bool success = false;
 
-  fe = frame_alloc (PAL_USER | PAL_ZERO);
-  if (fe != NULL)
+  struct spt_entry *spte = (struct spt_entry *) malloc (sizeof struct spt_entry);
+  if (spte == NULL)
+      return false;
+
+  spte->spt = &cur->spt;
+  spte->upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
+  spte->location = NONE;
+  spte->fe = NULL;
+  spte->writable = true;
+
+  lock_acquire (&frame_lock);
+  struct frame_entry *fe = frame_alloc (PAL_USER | PAL_ZERO);
+  if (fe == NULL)
   {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, fe->kpage, true);
-      if (success)
-          *esp = PHYS_BASE;
-      else
-          frame_free (fe);
+      lock_release (&frame_lock);
+      free (spte);
+      return false;
   }
+
+  success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, fe->kpage, true);
+  if (success)
+      *esp = PHYS_BASE;
+  else
+  {
+      frame_free (fe);
+      lock_release (&frame_lock);
+      free (spte);
+      return false;
+  }
+
+  spte->location = MEM;
+  spte->fe = fe;
+  if (!install_spte (spte->spt, spte))
+  {
+      frame_free (fe);
+      lock_release (&frame_lock);
+      free (spte);
+      return false;
+  }
+  fe->is_pin = false;
+  lock_release (&frame_lock);
+
   return success;
 }
 

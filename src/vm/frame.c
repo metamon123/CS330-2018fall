@@ -11,8 +11,7 @@ void frame_init ()
   lock_init (&frame_lock);
 }
 
-// TODO: void frame_alloc (enum palloc_flags flag, struct spt_entry *spte)
-struct frame_entry *frame_alloc (enum palloc_flags flag)
+struct frame_entry *frame_alloc (enum palloc_flags flag, struct spt_entry *spte)
 {
     // TODO: Acquire frame_lock in somewhere
 
@@ -33,8 +32,9 @@ struct frame_entry *frame_alloc (enum palloc_flags flag)
         return NULL;
     }
 
+    fe->is_pin = true;
     fe->kpage = kpage;
-    // TODO: set spte
+    fe->spte = spte;
     list_push_back (&frame_list, fe->elem);
 
     return fe;

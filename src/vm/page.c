@@ -1,6 +1,7 @@
 #include "vm/page.h"
 #include "threads/thread.h"
 #include "threads/synch.h"
+#include "threads/vaddr.h"
 #include <hash.h>
 
 static unsigned
@@ -72,14 +73,17 @@ spte_destroy_func (const struct hash_elem *e, void *aux UNUSED)
             break;
         case MEM:
             frame_free (spte->fe);
-            pagedir_clear_page (spte->spt->owner->pagedir, spte->upage);
+
+            // If pagedir is set normally, clear it so that pagedir_destroy can free it appropriately
+            uint32_t *pd = spte->spt->owner->pagedir;
+            if (pd != NULL)
+                pagedir_clear_page (pd, spte->upage);
             break;
         case SWAP:
             // TODO: free a swap slot which is occupied by the spte
             break;
         case FS:
             // TODO
-            break;
         case default:
             PANIC ("Invalid spte location : %d\n", spte->location);
     }

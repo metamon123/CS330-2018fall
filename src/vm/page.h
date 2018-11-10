@@ -31,6 +31,9 @@ struct spt_entry {
 
     bool writable;
 
+    // In file system
+    // something
+
     struct hash_elem hash_elem;
 };
 
