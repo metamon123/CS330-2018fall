@@ -726,8 +726,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       // file read -> success
       // install to pagedir -> success
 
-      spte->fe = fe;
       spte->location = MEM;
+      spte->fe = fe;
       
       lock_acquire (&spte->spt->spt_lock);
       if (!install_spte (spte->spt, spte))

@@ -13,8 +13,7 @@ void frame_init ()
 
 struct frame_entry *frame_alloc (enum palloc_flags flag, struct spt_entry *spte)
 {
-    // TODO: Acquire frame_lock in somewhere
-
+    ASSERT (lock_held_by_current_thread (&frame_lock));
     struct frame_entry *fe = (struct frame_entry *) malloc (sizeof (struct frame_entry));
     if (fe == NULL)
     {
@@ -44,6 +43,7 @@ struct frame_entry *frame_alloc (enum palloc_flags flag, struct spt_entry *spte)
 void frame_free (struct frame_entry *fe)
 {
     ASSERT (fe != NULL);
+    ASSERT (lock_held_by_current_thread (&frame_lock));
     list_remove (&fe->elem);
     // maybe spt lock will be needed
     // pagedir_clear_page (fe->spte->spt->owner->pagedir, fe->spte->upage);

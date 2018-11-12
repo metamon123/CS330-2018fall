@@ -80,8 +80,13 @@ spte_destroy_func (const struct hash_elem *e, void *aux UNUSED)
         case NONE:
             break;
         case MEM:
-            frame_free (spte->fe);
-
+            // assuming that spte->MEM was done but spte->fe = fe was not done
+            if (spte->fe != NULL)
+            {
+                lock_acquire (&frame_lock);
+                frame_free (spte->fe);
+                lock_release (&frame_lock);
+            }
             // If pagedir is set normally, clear it so that pagedir_destroy can free it appropriately
             uint32_t *pd = spte->spt->owner->pagedir;
             if (pd != NULL)
