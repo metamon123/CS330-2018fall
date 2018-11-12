@@ -6,7 +6,7 @@
 #include <hash.h>
 #include <inttypes.h>
 #include "vm/frame.h"
-
+#include "filesys/file.h"
 
 // MEM : page is in physical memory
 // SWAP : page is in swap disk
@@ -30,12 +30,14 @@ struct spt_entry {
     struct frame_entry *fe;
 
     // In swap disk
-    // uint32_t(?) swap_slot
+    size_t swap_slot_idx; // slot = PGSIZE (8 sectors)
 
     bool writable;
 
     // In file system
-    // something
+    struct file *file;
+    off_t ofs;
+    size_t page_read_bytes;
 
     struct hash_elem hash_elem;
 };
@@ -44,5 +46,8 @@ void spt_init (void);
 void spt_destroy (void);
 bool install_spte (struct spt *spt, struct spt_entry *spte);
 struct spt_entry *get_spte (struct spt *spt, void *upage);
+
+bool load_swap (struct spt_entry *spte);
+bool load_file (struct spt_entry *spte);
 
 #endif

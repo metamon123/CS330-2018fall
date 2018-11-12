@@ -150,9 +150,59 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
-  // release all lock which current thread is holding
-  struct list_elem *e;
+  //printf ("fault_addr : 0x%x , not_present : %d ,  write : %d , user : %d\n", fault_addr, not_present, write, user);
   struct thread *cur = thread_current ();
+  bool success = false;
+
+  lock_acquire (&cur->spt->spt_lock);
+  struct spt_entry *spte = get_spte (cur->spt, fault_addr);
+  lock_release (&cur->spt->spt_lock);
+
+  if (spte == NULL)
+  {
+      if ((uint32_t) fault_addr >= f->esp - 32)
+      {
+          // TODO: stack growth
+          // success = grow_stack ();
+      }
+  }
+  else
+  {
+      lock_acquire (&frame_lock); // TODO: should be improved... it's a big overhead
+      lock_acquire (&cur->spt->spt_lock);
+      switch (spte->location)
+      {
+          case NONE:
+              //printf ("spte info : \nspte->upage = 0x%x\nspte->fe = 0x%x\nspte->swap_slot_idx = %d\nspte->ofs = %d\n", spte->upage, spte->fe, spte->swap_slot_idx, spte->ofs);
+              break;
+          case MEM:
+              //printf ("spte info : \nspte->upage = 0x%x\nspte->fe = 0x%x\nspte->swap_slot_idx = %d\nspte->ofs = %d\n", spte->upage, spte->fe, spte->swap_slot_idx, spte->ofs);
+              //PANIC ("[ page_fault() on 0x%x ] spte->location == MEM but page_fault occurred\n", fault_addr);
+              // pagefault due to the other reasons
+              break;
+          case SWAP:
+              //printf ("spte info : \nspte->upage = 0x%x\nspte->fe = 0x%x\nspte->swap_slot_idx = %d\nspte->ofs = %d\n", spte->upage, spte->fe, spte->swap_slot_idx, spte->ofs);
+              success = load_swap (spte);
+              break;
+          case FS:
+              //printf ("spte info : \nspte->upage = 0x%x\nspte->fe = 0x%x\nspte->swap_slot_idx = %d\nspte->ofs = %d\n", spte->upage, spte->fe, spte->swap_slot_idx, spte->ofs);
+              success = load_file (spte);
+              break;
+          default:
+              PANIC ("[ page_fault() on 0x%x ] Invalid spte location : %d\n", fault_addr, spte->location);
+      }
+      lock_release (&cur->spt->spt_lock);
+      lock_release (&frame_lock);
+  }
+  
+  if (success)
+  {
+      return;
+  }
+
+  // release all lock which current thread is holding
+  // TODO: should I move below code to process_exit?
+  struct list_elem *e;
   for (e = list_begin (&cur->lock_list); e != list_end (&cur->lock_list);
        e = list_next (e))
   {
@@ -164,14 +214,5 @@ page_fault (struct intr_frame *f)
   }
   // TODO? free all malloc'd chunk current user process was holding
   _exit (-1);
-  /* To implement virtual memory, delete the rest of the function
-     body, and replace it with code that brings in the page to
-     which fault_addr refers. */
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
-          fault_addr,
-          not_present ? "not present" : "rights violation",
-          write ? "writing" : "reading",
-          user ? "user" : "kernel");
-  //kill (f);
-}
+ }
 

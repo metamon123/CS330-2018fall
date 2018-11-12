@@ -1,9 +1,11 @@
 #include "vm/page.h"
+#include "vm/swap.h"
 #include "threads/thread.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
 #include "userprog/pagedir.h"
+#include "userprog/process.h"
 #include <hash.h>
 
 static unsigned
@@ -54,6 +56,76 @@ struct spt_entry *get_spte (struct spt *spt, void *upage)
     return he != NULL ? hash_entry (he, struct spt_entry, hash_elem) : NULL;
 }
 
+bool load_swap (struct spt_entry *spte)
+{
+    ASSERT (spte != NULL);
+    ASSERT (lock_held_by_current_thread (&frame_lock) && lock_held_by_current_thread (&spte->spt->spt_lock));
+    ASSERT (spte->location = SWAP && spte->swap_slot_idx != -1);
+
+    struct frame_entry *fe = frame_alloc (PAL_USER, spte);
+    ASSERT (fe != NULL);
+
+    swap_in (fe->kpage, spte->swap_slot_idx);
+
+    if (!install_page (spte->upage, fe->kpage, spte->writable))
+    {
+        frame_free (fe);
+        return false; // frame_lock will be released by caller
+    }
+
+    spte->location = MEM;
+    spte->fe = fe;
+    fe->is_pin = false;
+    return true;
+}
+
+bool load_file (struct spt_entry *spte)
+{
+    // TODO: ISSUE - Is it possible that caller already acquired filesys_lock?
+    ASSERT (spte != NULL);
+    ASSERT (lock_held_by_current_thread (&frame_lock) && lock_held_by_current_thread (&spte->spt->spt_lock));
+    ASSERT (spte->location = FS && spte->file != NULL);
+
+
+    struct frame_entry *fe = frame_alloc (PAL_USER, spte);
+    ASSERT (fe != NULL);
+
+    ASSERT (spte->page_read_bytes <= PGSIZE);
+
+    // read from file only if page_read_bytes > 0
+    if (spte->page_read_bytes > 0)
+    {
+        // ISSUE - Is it possible that caller already acquired filesys_lock?
+        // filesys_acquire by SYS_READ & page_fault while SYS_READ
+        // check whether current thread has already acquired filesys_lock.
+        bool is_fslock_acquired = lock_held_by_current_thread (&filesys_lock);
+        if (!is_fslock_acquired) filesys_lock_acquire ();
+
+        off_t read_bytes = file_read_at (spte->file, fe->kpage, spte->page_read_bytes, spte->ofs);
+        if (read_bytes != spte->page_read_bytes)
+        {
+            frame_free (fe);
+            if (!is_fslock_acquired) filesys_lock_release ();
+            return false;
+        }
+
+        if (!is_fslock_acquired) filesys_lock_release ();
+    }
+    memset (fe->kpage + spte->page_read_bytes, 0, PGSIZE - spte->page_read_bytes);
+
+
+    if (!install_page (spte->upage, fe->kpage, spte->writable))
+    {
+        frame_free (fe);
+        return false;
+    }
+
+    spte->location = MEM;
+    spte->fe = fe;
+    fe->is_pin = false;
+    return true;
+}
+
 static unsigned
 spte_hash_func (const struct hash_elem *e, void *aux UNUSED)
 {
@@ -93,12 +165,13 @@ spte_destroy_func (const struct hash_elem *e, void *aux UNUSED)
                 pagedir_clear_page (pd, spte->upage);
             break;
         case SWAP:
-            // TODO: free a swap slot which is occupied by the spte
+            // TODO: what should I do more?
+            swap_slot_free (spte->swap_slot_idx);
             break;
         case FS:
-            // TODO
+            // TODO: what should I do??
         default:
-            PANIC ("Invalid spte location : %d\n", spte->location);
+            PANIC ("[ spte_destroy_func() where spte->upage = 0x%x ] Invalid spte location : %d\n", spte->upage, spte->location);
     }
     free (spte);
 }

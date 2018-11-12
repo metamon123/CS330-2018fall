@@ -162,6 +162,7 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
+struct lock filesys_lock;
 void filesys_lock_acquire (void);
 void filesys_lock_release (void);
 struct thread *tid2thread (tid_t);

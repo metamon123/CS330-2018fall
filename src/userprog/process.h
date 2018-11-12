@@ -20,4 +20,5 @@ struct fd_elem *fd_lookup (int);
 struct file *fd2file (int);
 int allocate_fd (void);
 
+bool install_page (void *upage, void *kpage, bool writable);
 #endif /* userprog/process.h */
