@@ -15,7 +15,7 @@ struct frame_entry *frame_alloc (enum palloc_flags flag, struct spt_entry *spte)
 {
     // TODO: Acquire frame_lock in somewhere
 
-    struct frame_entry *fe = (struct frame_entry *) malloc (sizeof struct frame_entry);
+    struct frame_entry *fe = (struct frame_entry *) malloc (sizeof (struct frame_entry));
     if (fe == NULL)
     {
         printf ("[ frame_alloc() ] No kernel space form new frame_entry structure\n");
@@ -35,7 +35,7 @@ struct frame_entry *frame_alloc (enum palloc_flags flag, struct spt_entry *spte)
     fe->is_pin = true;
     fe->kpage = kpage;
     fe->spte = spte;
-    list_push_back (&frame_list, fe->elem);
+    list_push_back (&frame_list, &fe->elem);
 
     return fe;
 }

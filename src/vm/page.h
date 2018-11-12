@@ -1,3 +1,6 @@
+#ifndef VM_PAGE_H
+#define VM_PAGE_H
+
 #include "threads/thread.h"
 #include "threads/synch.h"
 #include <hash.h>
@@ -37,7 +40,9 @@ struct spt_entry {
     struct hash_elem hash_elem;
 };
 
-void spt_init ();
-void spt_destroy ();
+void spt_init (void);
+void spt_destroy (void);
 bool install_spte (struct spt *spt, struct spt_entry *spte);
 struct spt_entry *get_spte (struct spt *spt, void *upage);
+
+#endif

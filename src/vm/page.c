@@ -2,6 +2,8 @@
 #include "threads/thread.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/malloc.h"
+#include "userprog/pagedir.h"
 #include <hash.h>
 
 static unsigned
@@ -16,8 +18,13 @@ spte_destroy_func (const struct hash_elem *e, void *aux UNUSED);
 void spt_init ()
 {
     struct thread *cur = thread_current ();
-    struct spt *spt = &cur->spt;
+    cur->spt = (struct spt *) malloc (sizeof (struct spt));
+    if (cur->spt == NULL)
+    {
+        PANIC ("malloc failed, no space for cur->spt\n");
+    }
 
+    struct spt *spt = cur->spt;
     spt->owner = cur;
     lock_init (&spt->spt_lock);
     hash_init (&spt->spt_hash, spte_hash_func, spte_less_func, NULL);
@@ -26,9 +33,10 @@ void spt_init ()
 void spt_destroy ()
 {
     struct thread *cur = thread_current ();
-    struct spt *spt = &cur->spt;
+    struct spt *spt = cur->spt;
 
     hash_destroy (&spt->spt_hash, spte_destroy_func);
+    free (spt);
 }
 
 bool install_spte (struct spt *spt, struct spt_entry *spte)
@@ -84,7 +92,7 @@ spte_destroy_func (const struct hash_elem *e, void *aux UNUSED)
             break;
         case FS:
             // TODO
-        case default:
+        default:
             PANIC ("Invalid spte location : %d\n", spte->location);
     }
     free (spte);

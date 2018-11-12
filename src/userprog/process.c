@@ -683,8 +683,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
       // TODO on 3-1
 
-      struct spt_entry *spte = (struct spt_entry *) malloc (sizeof struct spt_entry);
-      spte->spt = &cur->spt;
+      struct spt_entry *spte = (struct spt_entry *) malloc (sizeof (struct spt_entry));
+      spte->spt = cur->spt;
       spte->upage = upage;
       spte->location = NONE;
       spte->fe = NULL;
@@ -728,15 +728,21 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
       spte->fe = fe;
       spte->location = MEM;
+      
+      lock_acquire (&spte->spt->spt_lock);
       if (!install_spte (spte->spt, spte))
       {
           // it fails if
           // there already exists a spte with same upage
+          lock_release (&spte->spt->spt_lock);
+
           frame_free (fe);
           lock_release (&frame_lock);
           free (spte);
           return false;
       }
+      lock_release (&spte->spt->spt_lock);
+
       fe->is_pin = false;
 
       lock_release (&frame_lock);
@@ -772,18 +778,18 @@ setup_stack (void **esp)
   struct thread *cur = thread_current ();
   bool success = false;
 
-  struct spt_entry *spte = (struct spt_entry *) malloc (sizeof struct spt_entry);
+  struct spt_entry *spte = (struct spt_entry *) malloc (sizeof (struct spt_entry));
   if (spte == NULL)
       return false;
 
-  spte->spt = &cur->spt;
+  spte->spt = cur->spt;
   spte->upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
   spte->location = NONE;
   spte->fe = NULL;
   spte->writable = true;
 
   lock_acquire (&frame_lock);
-  struct frame_entry *fe = frame_alloc (PAL_USER | PAL_ZERO);
+  struct frame_entry *fe = frame_alloc (PAL_USER | PAL_ZERO, spte);
   if (fe == NULL)
   {
       lock_release (&frame_lock);
@@ -804,13 +810,18 @@ setup_stack (void **esp)
 
   spte->location = MEM;
   spte->fe = fe;
+  lock_acquire (&spte->spt->spt_lock);
   if (!install_spte (spte->spt, spte))
   {
+      lock_release (&spte->spt->spt_lock);
+
       frame_free (fe);
       lock_release (&frame_lock);
       free (spte);
       return false;
   }
+  lock_release (&spte->spt->spt_lock);
+
   fe->is_pin = false;
   lock_release (&frame_lock);
 

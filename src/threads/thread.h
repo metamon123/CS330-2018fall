@@ -102,6 +102,7 @@ struct thread
     struct list lock_list;
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
+    bool is_process;
     uint32_t *pagedir;                  /* Page directory. */
     
     struct thread *parent;
@@ -120,7 +121,7 @@ struct thread
 #endif
 
 #ifdef VM
-    struct spt spt;
+    struct spt *spt;
 #endif
 
     struct hash_elem thread_hash_elem;
