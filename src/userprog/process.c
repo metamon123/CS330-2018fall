@@ -764,12 +764,15 @@ setup_stack (void **esp)
 
   lock_acquire (&frame_lock);
   struct frame_entry *fe = frame_alloc (PAL_USER | PAL_ZERO, spte);
+  ASSERT (fe != NULL);
+  /*
   if (fe == NULL)
   {
       lock_release (&frame_lock);
       free (spte);
       return false;
   }
+  */
 
   success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, fe->kpage, true);
   if (success)
@@ -790,6 +793,8 @@ setup_stack (void **esp)
       lock_release (&spte->spt->spt_lock);
 
       frame_free (fe);
+      pagedir_clear_page (&spte->spt->owner->pagedir, spte->upage);
+
       lock_release (&frame_lock);
       free (spte);
       return false;

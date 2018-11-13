@@ -516,6 +516,10 @@ init_thread (struct thread *t, const char *name, int priority)
   lock_init (&t->child_list_lock);
   list_init (&t->child_list);
 #endif
+#ifdef VM
+  t->in_syscall = false;
+  t->sc_esp = NULL;
+#endif
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

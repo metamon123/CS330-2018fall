@@ -157,6 +157,10 @@ syscall_handler (struct intr_frame *f UNUSED)
 {
   // printf ("system call!\n");
   uint32_t esp = (uint32_t)f->esp;
+  struct thread *cur = thread_current ();
+  cur->sc_esp = esp;
+  cur->in_syscall = true;
+
   int syscall_num; // assuming that sizeof(int) == 4
   bool bad_exit = true;
   // esp check is necessary since user can control it
@@ -266,6 +270,8 @@ syscall_handler (struct intr_frame *f UNUSED)
     default:
         printf ("Invalid syscall number\n");
   }
+  cur->in_syscall = false;
+  cur->sc_esp = NULL;
   if (bad_exit)
   {
     // TODO: notify bad exit

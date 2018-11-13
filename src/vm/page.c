@@ -36,8 +36,12 @@ void spt_destroy ()
 {
     struct thread *cur = thread_current ();
     struct spt *spt = cur->spt;
-
+    
+    lock_acquire (&frame_lock);
+    lock_acquire (&spt->spt_lock);
     hash_destroy (&spt->spt_hash, spte_destroy_func);
+    lock_release (&spt->spt_lock);
+    lock_release (&frame_lock);
     free (spt);
 }
 
@@ -81,7 +85,7 @@ bool load_swap (struct spt_entry *spte)
 
 bool load_file (struct spt_entry *spte)
 {
-    // TODO: ISSUE - Is it possible that caller already acquired filesys_lock?
+    // ISSUE - Is it possible that caller already acquired filesys_lock?
     ASSERT (spte != NULL);
     ASSERT (lock_held_by_current_thread (&frame_lock) && lock_held_by_current_thread (&spte->spt->spt_lock));
     ASSERT (spte->location = FS && spte->file != NULL);
@@ -126,6 +130,54 @@ bool load_file (struct spt_entry *spte)
     return true;
 }
 
+// Caller should verify that upage is near the esp
+bool grow_stack (void *upage)
+{
+    struct thread *cur = thread_current ();
+    struct spt_entry *spte = (struct spt_entry *) malloc (sizeof (struct spt_entry));
+    if (spte == NULL)
+        return false;
+
+    spte->spt = cur->spt;
+    spte->upage = pg_round_down (upage);
+    spte->location = NONE;
+    spte->fe = NULL;
+    spte->swap_slot_idx = -1;
+    spte->writable = true;
+    spte->file = NULL;
+
+    lock_acquire (&frame_lock);
+    struct frame_entry *fe = frame_alloc (PAL_USER | PAL_ZERO, spte);
+    ASSERT (fe != NULL);
+
+    if (!install_page (spte->upage, fe->kpage, true))
+    {
+        frame_free (fe);
+        lock_release (&frame_lock);
+        free (spte);
+        return false;
+    }
+
+    spte->location = MEM;
+    spte->fe = fe;
+    lock_acquire (&spte->spt->spt_lock);
+    if (!install_spte (spte->spt, spte))
+    {
+        lock_release (&spte->spt->spt_lock);
+
+        frame_free (fe);
+        pagedir_clear_page (&spte->spt->owner->pagedir, spte->upage);
+
+        lock_release (&frame_lock);
+        free (spte);
+        return false;
+    }
+    lock_release (&spte->spt->spt_lock);
+
+    fe->is_pin = false;
+    lock_release (&frame_lock);
+    return true;
+}
 static unsigned
 spte_hash_func (const struct hash_elem *e, void *aux UNUSED)
 {
@@ -148,6 +200,8 @@ spte_destroy_func (const struct hash_elem *e, void *aux UNUSED)
     ASSERT (spte != NULL);
 
     //printf ("[ spte_destroy_func ] spte: 0x%x, spte->upage: 0x%x, spte->location: %d, spte->fe: 0x%x\n", spte, spte->upage, spte->location, spte->fe);
+    //lock_acquire (&frame_lock);
+    //lock_acquire (&spte->spt->spt_lock);
     switch (spte->location) 
     {
         case NONE:
@@ -157,9 +211,7 @@ spte_destroy_func (const struct hash_elem *e, void *aux UNUSED)
             if (spte->fe != NULL)
             {
                 //printf ("spte->fe->kpage: 0x%x\n", spte->fe->kpage);
-                lock_acquire (&frame_lock);
                 frame_free (spte->fe);
-                lock_release (&frame_lock);
             }
             // If pagedir is set normally, clear it so that pagedir_destroy can free it appropriately
             uint32_t *pd = spte->spt->owner->pagedir;
@@ -176,5 +228,7 @@ spte_destroy_func (const struct hash_elem *e, void *aux UNUSED)
         default:
             PANIC ("[ spte_destroy_func() where spte->upage = 0x%x ] Invalid spte location : %d\n", spte->upage, spte->location);
     }
+    //lock_release (&spte->spt->spt_lock);
+    //lock_release (&frame_lock);
     free (spte);
 }

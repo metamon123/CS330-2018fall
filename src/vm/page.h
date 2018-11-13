@@ -49,5 +49,5 @@ struct spt_entry *get_spte (struct spt *spt, void *upage);
 
 bool load_swap (struct spt_entry *spte);
 bool load_file (struct spt_entry *spte);
-
+bool grow_stack (void *upage);
 #endif

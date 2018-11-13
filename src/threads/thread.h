@@ -122,6 +122,8 @@ struct thread
 
 #ifdef VM
     struct spt *spt;
+    bool in_syscall;
+    void *sc_esp;
 #endif
 
     struct hash_elem thread_hash_elem;

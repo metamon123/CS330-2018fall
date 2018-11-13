@@ -5,6 +5,7 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "userprog/syscall.h"
+#include "threads/vaddr.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -171,7 +172,7 @@ page_fault (struct intr_frame *f)
   struct thread *cur = thread_current ();
   bool success = false;
 
-  if (!not_present)
+  if (!not_present || !is_user_vaddr (fault_addr))
   {
       my_kill ();
       return;
@@ -185,10 +186,14 @@ page_fault (struct intr_frame *f)
   // 0, 1, 2, 3
   if (spte == NULL)
   {
-      if ((uint32_t) fault_addr >= f->esp - 32)
+      uint32_t esp = f->esp;
+      if (cur->in_syscall)
+          esp = (uint32_t) cur->sc_esp;
+
+      if ((uint32_t) fault_addr >= esp - 32 && fault_addr >= 0xbf000000)
       {
           // TODO: stack growth
-          // success = grow_stack ();
+          success = grow_stack (fault_addr);
       }
   }
   else
@@ -203,7 +208,7 @@ page_fault (struct intr_frame *f)
               break;
           case MEM:
               //printf ("MEM spte info : \nspte->upage = 0x%x\nspte->fe = 0x%x\nspte->swap_slot_idx = %d\nspte->ofs = %d\nspte->location = %d\n", spte->upage, spte->fe, spte->swap_slot_idx, spte->ofs, spte->location);
-              PANIC ("[ page_fault() on 0x%x ] spte->location == MEM but page_fault occurred\n", fault_addr);
+              //PANIC ("[ page_fault() on 0x%x ] spte->location == MEM but page_fault occurred\n", fault_addr);
               // pagefault due to the other reasons
               break;
           case SWAP:
