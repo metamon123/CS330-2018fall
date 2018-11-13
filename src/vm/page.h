@@ -11,7 +11,7 @@
 // MEM : page is in physical memory
 // SWAP : page is in swap disk
 // FS : page is in file system disk
-enum location {NONE, MEM, SWAP, FS};
+enum location {DUMMY, NONE, MEM, SWAP, FS};
 
 struct spt {
     struct thread *owner; // necessary?

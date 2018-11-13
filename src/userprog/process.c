@@ -298,6 +298,7 @@ process_exit (void)
     sema_up (&_t->sema_destroy);
   }
 
+  // TODO: synchronize spt_destroy
   spt_destroy (); // free all spte structure & corresponding frame_entry / frame / swap slot
   // spt structure will not be freed yet,
   // since its on struct thread (not malloc'd)
@@ -727,6 +728,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
           return false;
       }
 
+      ASSERT 
+
       // frame alloc -> success
       // file read -> success
       // install to pagedir -> success
@@ -742,6 +745,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
           lock_release (&spte->spt->spt_lock);
 
           frame_free (fe);
+          pagedir_clear_page (cur->pagedir, spte->upage);
           lock_release (&frame_lock);
           free (spte);
           return false;
@@ -751,6 +755,11 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       fe->is_pin = false;
 
       lock_release (&frame_lock);
+      // for debug
+      printf ("load_segment - spte info : \nspte->upage = 0x%x\nspte->fe->kpage : 0x%x\nspte->fe = 0x%x\nspte->swap_slot_idx = %d\nspte->ofs = %d\nspte->location = %d\n", spte->upage, spte->fe->kpage, spte->fe, spte->swap_slot_idx, spte->ofs, spte->location);
+      //spte = get_spte (cur->spt, upage);
+      //printf ("load_segment - get_spte info : \nspte->upage = 0x%x\nspte->fe = 0x%x\nspte->swap_slot_idx = %d\nspte->ofs = %d\nspte->location = %d\n", spte->upage, spte->fe, spte->swap_slot_idx, spte->ofs, spte->location);
+
 
       // Advance.
       read_bytes -= page_read_bytes;

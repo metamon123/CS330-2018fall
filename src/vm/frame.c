@@ -59,13 +59,13 @@ struct frame_entry *frame_alloc (enum palloc_flags flag, struct spt_entry *spte)
         // FRAME EVICTION !
         // get a victim frame
         struct frame_entry *victim = select_victim ();
-
         struct spt_entry *victim_spte = victim->spte;
         
         bool is_sptlock_acquired = lock_held_by_current_thread (&victim->spte->spt->spt_lock);
         if (!is_sptlock_acquired) lock_acquire (&victim_spte->spt->spt_lock);
 
         ASSERT (victim_spte->location == MEM);
+        printf ("[ frame_alloc - frame_evict ]\nvictim->kpage : 0x%x\nvictim->spte : 0x%x\nvictim->spte->upage : 0x%x\n", victim->kpage, victim->spte, victim->spte->upage);
 
         if (victim_spte->file == NULL)
         {
@@ -103,14 +103,17 @@ struct frame_entry *frame_alloc (enum palloc_flags flag, struct spt_entry *spte)
             victim_spte->location = FS;
             victim_spte->fe = NULL; 
         }
-
+        printf ("[ frame_alloc - frame_evict ] victim_spte->location = %d\n", victim_spte->location);
+        ASSERT (get_spte (victim_spte->spt, victim_spte->upage) == victim_spte);
         if (!is_sptlock_acquired) lock_release (&victim_spte->spt->spt_lock);
     }
 
     fe->is_pin = true;
     fe->kpage = kpage;
     fe->spte = spte;
+    printf ("1\n");
     list_push_back (&frame_list, &fe->elem);
+    printf ("11\n");
     //printf ("[ frame_alloc() ] success, kpage = 0x%x, upage = 0x%x\n", kpage, spte->upage);
     return fe;
 }
@@ -120,7 +123,7 @@ void frame_free (struct frame_entry *fe)
 {
     ASSERT (fe != NULL);
     ASSERT (lock_held_by_current_thread (&frame_lock));
-    //printf ("[ frame_free() ] success, kpage = 0x%x, upage = 0x%x\n", fe->kpage, fe->spte->upage);
+    printf ("[ frame_free() ] success, kpage = 0x%x, upage = 0x%x\n", fe->kpage, fe->spte->upage);
     list_remove (&fe->elem);
     
     // maybe spt lock will be needed
