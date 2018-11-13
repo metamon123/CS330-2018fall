@@ -147,6 +147,7 @@ spte_destroy_func (const struct hash_elem *e, void *aux UNUSED)
     struct spt_entry *spte = hash_entry (e, struct spt_entry, hash_elem);
     ASSERT (spte != NULL);
 
+    //printf ("[ spte_destroy_func ] spte: 0x%x, spte->upage: 0x%x, spte->location: %d, spte->fe: 0x%x\n", spte, spte->upage, spte->location, spte->fe);
     switch (spte->location) 
     {
         case NONE:
@@ -155,6 +156,7 @@ spte_destroy_func (const struct hash_elem *e, void *aux UNUSED)
             // assuming that spte->MEM was done but spte->fe = fe was not done
             if (spte->fe != NULL)
             {
+                //printf ("spte->fe->kpage: 0x%x\n", spte->fe->kpage);
                 lock_acquire (&frame_lock);
                 frame_free (spte->fe);
                 lock_release (&frame_lock);
@@ -170,6 +172,7 @@ spte_destroy_func (const struct hash_elem *e, void *aux UNUSED)
             break;
         case FS:
             // TODO: what should I do??
+            break;
         default:
             PANIC ("[ spte_destroy_func() where spte->upage = 0x%x ] Invalid spte location : %d\n", spte->upage, spte->location);
     }

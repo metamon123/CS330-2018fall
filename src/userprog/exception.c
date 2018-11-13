@@ -193,24 +193,25 @@ page_fault (struct intr_frame *f)
   }
   else
   {
+      //printf ("[ page_fault ] fault_addr : 0x%x | spte : 0x%x\n", fault_addr, spte);
       lock_acquire (&frame_lock); // TODO: should be improved... it's a big overhead
       lock_acquire (&cur->spt->spt_lock);
       switch (spte->location)
       {
           case NONE:
-              printf ("spte info : \nspte->upage = 0x%x\nspte->fe = 0x%x\nspte->swap_slot_idx = %d\nspte->ofs = %d\nspte->location = %d\n", spte->upage, spte->fe, spte->swap_slot_idx, spte->ofs, spte->location);
+              //printf ("NONE spte info : \nspte->upage = 0x%x\nspte->fe = 0x%x\nspte->swap_slot_idx = %d\nspte->ofs = %d\nspte->location = %d\n", spte->upage, spte->fe, spte->swap_slot_idx, spte->ofs, spte->location);
               break;
           case MEM:
-              printf ("spte info : \nspte->upage = 0x%x\nspte->fe = 0x%x\nspte->swap_slot_idx = %d\nspte->ofs = %d\nspte->location = %d\n", spte->upage, spte->fe, spte->swap_slot_idx, spte->ofs, spte->location);
+              //printf ("MEM spte info : \nspte->upage = 0x%x\nspte->fe = 0x%x\nspte->swap_slot_idx = %d\nspte->ofs = %d\nspte->location = %d\n", spte->upage, spte->fe, spte->swap_slot_idx, spte->ofs, spte->location);
               PANIC ("[ page_fault() on 0x%x ] spte->location == MEM but page_fault occurred\n", fault_addr);
               // pagefault due to the other reasons
               break;
           case SWAP:
-              printf ("spte info : \nspte->upage = 0x%x\nspte->fe = 0x%x\nspte->swap_slot_idx = %d\nspte->ofs = %d\nspte->location = %d\n", spte->upage, spte->fe, spte->swap_slot_idx, spte->ofs);
+              //printf ("spte info : \nspte->upage = 0x%x\nspte->fe = 0x%x\nspte->swap_slot_idx = %d\nspte->ofs = %d\nspte->location = %d\n", spte->upage, spte->fe, spte->swap_slot_idx, spte->ofs, spte->location);
               success = load_swap (spte);
               break;
           case FS:
-              printf ("spte info : \nspte->upage = 0x%x\nspte->fe = 0x%x\nspte->swap_slot_idx = %d\nspte->ofs = %d\nspte->location = %d\n", spte->upage, spte->fe, spte->swap_slot_idx, spte->ofs);
+              //printf ("FS spte info : \nspte->upage = 0x%x\nspte->fe = 0x%x\nspte->swap_slot_idx = %d\nspte->ofs = %d\nspte->location = %d\n", spte->upage, spte->fe, spte->swap_slot_idx, spte->ofs, spte->location);
               success = load_file (spte);
               break;
           default:

@@ -302,6 +302,7 @@ process_exit (void)
   spt_destroy (); // free all spte structure & corresponding frame_entry / frame / swap slot
   // spt structure will not be freed yet,
   // since its on struct thread (not malloc'd)
+  //printf ("spt_destroy finished\n"); 
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -687,7 +688,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       struct spt_entry *spte = (struct spt_entry *) malloc (sizeof (struct spt_entry));
       spte->spt = cur->spt;
       spte->upage = upage;
-      spte->location = NONE;
+      spte->location = FS;
       spte->fe = NULL;
       spte->swap_slot_idx = -1;
       spte->writable = writable;
@@ -697,68 +698,23 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
       // spte->hash_elem (contains list_elem) does not need to be initialize. (list_insert does it)
 
-      lock_acquire (&frame_lock);
-      struct frame_entry *fe = frame_alloc (PAL_USER, spte);
-      // lock_release (&frame_lock);
-
-      if (fe == NULL)
-      {
-          lock_release (&frame_lock);
-          free (spte);
-          return false;
-      }
-      
-      // Other process can try to swap out the frame while I'm setting it...
-      // Do lock? or Pinning on the frame?
-      if (file_read (file, fe->kpage, page_read_bytes) != (int) page_read_bytes)
-      {
-          frame_free (fe);
-          lock_release (&frame_lock);
-          free (spte);
-          return false;
-      }
-
-      memset (fe->kpage + page_read_bytes, 0, page_zero_bytes);
-
-      if (!install_page (upage, fe->kpage, writable))
-      {
-          frame_free (fe);
-          lock_release (&frame_lock);
-          free (spte);
-          return false;
-      }
-
-      ASSERT 
-
-      // frame alloc -> success
-      // file read -> success
-      // install to pagedir -> success
-
-      spte->location = MEM;
-      spte->fe = fe;
-      
       lock_acquire (&spte->spt->spt_lock);
       if (!install_spte (spte->spt, spte))
       {
           // it fails if
           // there already exists a spte with same upage
           lock_release (&spte->spt->spt_lock);
-
-          frame_free (fe);
-          pagedir_clear_page (cur->pagedir, spte->upage);
-          lock_release (&frame_lock);
+          printf ("install_spte failed\n");
           free (spte);
           return false;
       }
       lock_release (&spte->spt->spt_lock);
 
-      fe->is_pin = false;
 
-      lock_release (&frame_lock);
       // for debug
-      printf ("load_segment - spte info : \nspte->upage = 0x%x\nspte->fe->kpage : 0x%x\nspte->fe = 0x%x\nspte->swap_slot_idx = %d\nspte->ofs = %d\nspte->location = %d\n", spte->upage, spte->fe->kpage, spte->fe, spte->swap_slot_idx, spte->ofs, spte->location);
-      //spte = get_spte (cur->spt, upage);
-      //printf ("load_segment - get_spte info : \nspte->upage = 0x%x\nspte->fe = 0x%x\nspte->swap_slot_idx = %d\nspte->ofs = %d\nspte->location = %d\n", spte->upage, spte->fe, spte->swap_slot_idx, spte->ofs, spte->location);
+      //PANIC ("load_segment - spte info : 0x%x\nspte->upage = 0x%x\nspte->fe->kpage : 0x%x\nspte->fe = 0x%x\nspte->swap_slot_idx = %d\nspte->ofs = %d\nspte->location = %d\n", spte, spte->upage, spte->fe->kpage, spte->fe, spte->swap_slot_idx, spte->ofs, spte->location);
+      
+      //msg ("load_segment - get_spte info : \nspte->upage = 0x%x\nspte->fe = 0x%x\nspte->swap_slot_idx = %d\nspte->ofs = %d\nspte->location = %d\n", spte->upage, spte->fe, spte->swap_slot_idx, spte->ofs, spte->location);
 
 
       // Advance.
