@@ -124,6 +124,7 @@ struct thread
     struct spt *spt;
     bool in_syscall;
     void *sc_esp;
+    struct list pin_list;
 #endif
 
     struct hash_elem thread_hash_elem;

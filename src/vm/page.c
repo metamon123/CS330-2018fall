@@ -92,6 +92,9 @@ bool load_file (struct spt_entry *spte)
 
 
     struct frame_entry *fe = frame_alloc (PAL_USER, spte);
+    //struct thread *cur = thread_current (); // for debugging
+    //printf ("[load_file tid %d] frame_alloc ended\n", cur->tid);
+
     ASSERT (fe != NULL);
 
     ASSERT (spte->page_read_bytes <= PGSIZE);
@@ -99,21 +102,25 @@ bool load_file (struct spt_entry *spte)
     // read from file only if page_read_bytes > 0
     if (spte->page_read_bytes > 0)
     {
+        //printf ("[load_file tid %d] here\n", cur->tid);
         // ISSUE - Is it possible that caller already acquired filesys_lock?
         // filesys_acquire by SYS_READ & page_fault while SYS_READ
         // check whether current thread has already acquired filesys_lock.
-        bool is_fslock_acquired = lock_held_by_current_thread (&filesys_lock);
-        if (!is_fslock_acquired) filesys_lock_acquire ();
+        
+        //bool is_fslock_acquired = lock_held_by_current_thread (&filesys_lock);
+        //if (!is_fslock_acquired) filesys_lock_acquire ();
 
         off_t read_bytes = file_read_at (spte->file, fe->kpage, spte->page_read_bytes, spte->ofs);
         if (read_bytes != spte->page_read_bytes)
         {
             frame_free (fe);
-            if (!is_fslock_acquired) filesys_lock_release ();
+            //if (!is_fslock_acquired) filesys_lock_release ();
             return false;
         }
 
-        if (!is_fslock_acquired) filesys_lock_release ();
+        //printf ("[load_file tid %d] here2\n", cur->tid);
+
+        //if (!is_fslock_acquired) filesys_lock_release ();
     }
     memset (fe->kpage + spte->page_read_bytes, 0, PGSIZE - spte->page_read_bytes);
 
@@ -124,6 +131,7 @@ bool load_file (struct spt_entry *spte)
         return false;
     }
 
+    //printf ("[load_file tid %d] normal end\n", cur->tid);
     spte->location = MEM;
     spte->fe = fe;
     fe->is_pin = false;
@@ -134,6 +142,8 @@ bool load_file (struct spt_entry *spte)
 bool grow_stack (void *upage)
 {
     struct thread *cur = thread_current ();
+
+    ASSERT (lock_held_by_current_thread (&frame_lock) && lock_held_by_current_thread (&cur->spt->spt_lock));
     struct spt_entry *spte = (struct spt_entry *) malloc (sizeof (struct spt_entry));
     if (spte == NULL)
         return false;
@@ -146,36 +156,28 @@ bool grow_stack (void *upage)
     spte->writable = true;
     spte->file = NULL;
 
-    lock_acquire (&frame_lock);
     struct frame_entry *fe = frame_alloc (PAL_USER | PAL_ZERO, spte);
     ASSERT (fe != NULL);
 
     if (!install_page (spte->upage, fe->kpage, true))
     {
         frame_free (fe);
-        lock_release (&frame_lock);
         free (spte);
         return false;
     }
 
     spte->location = MEM;
     spte->fe = fe;
-    lock_acquire (&spte->spt->spt_lock);
     if (!install_spte (spte->spt, spte))
     {
-        lock_release (&spte->spt->spt_lock);
-
         frame_free (fe);
         pagedir_clear_page (&spte->spt->owner->pagedir, spte->upage);
 
-        lock_release (&frame_lock);
         free (spte);
         return false;
     }
-    lock_release (&spte->spt->spt_lock);
 
     fe->is_pin = false;
-    lock_release (&frame_lock);
     return true;
 }
 static unsigned

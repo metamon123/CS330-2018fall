@@ -519,6 +519,7 @@ init_thread (struct thread *t, const char *name, int priority)
 #ifdef VM
   t->in_syscall = false;
   t->sc_esp = NULL;
+  list_init (&t->pin_list);
 #endif
 }
 

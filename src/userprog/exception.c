@@ -111,23 +111,6 @@ kill (struct intr_frame *f)
     }
 }
 
-static void my_kill ()
-{
-  // release all lock which current thread is holding
-  // TODO: should I move below code to process_exit?
-  struct list_elem *e;
-  struct thread *cur = thread_current ();
-  while ((e = list_begin (&cur->lock_list)) != list_end (&cur->lock_list))
-  {
-      struct lock *lock = list_entry (e, struct lock, elem);
-      ASSERT (lock != NULL);
-      lock_release (lock);
-  }
-
-  // TODO? free all malloc'd chunk current user process was holding
-  _exit (-1);
-
-}
 /* Page fault handler.  This is a skeleton that must be filled in
    to implement virtual memory.  Some solutions to project 2 may
    also require modifying this code.
@@ -174,16 +157,13 @@ page_fault (struct intr_frame *f)
 
   if (!not_present || !is_user_vaddr (fault_addr))
   {
-      my_kill ();
-      return;
+      _exit (-1);
   }
 
   lock_acquire (&cur->spt->spt_lock);
   struct spt_entry *spte = get_spte (cur->spt, fault_addr);
   lock_release (&cur->spt->spt_lock);
 
-  //printf ("NONE : %d\nMEM : %d\nSWAP : %d\nFS : %d\n", NONE, MEM, SWAP, FS);
-  // 0, 1, 2, 3
   if (spte == NULL)
   {
       uint32_t esp = f->esp;
@@ -193,14 +173,22 @@ page_fault (struct intr_frame *f)
       if ((uint32_t) fault_addr >= esp - 32 && fault_addr >= 0xbf000000)
       {
           // TODO: stack growth
+          lock_acquire (&frame_lock);
+          lock_acquire (&cur->spt->spt_lock);
+
           success = grow_stack (fault_addr);
+
+          lock_release (&cur->spt->spt_lock);
+          lock_release (&frame_lock);
       }
   }
   else
   {
-      //printf ("[ page_fault ] fault_addr : 0x%x | spte : 0x%x\n", fault_addr, spte);
+      printf ("[ page_fault tid %d] fault_addr : 0x%x | spte : 0x%x\n", cur->tid, fault_addr, spte);
       lock_acquire (&frame_lock); // TODO: should be improved... it's a big overhead
+      printf ("pf - tid %d acquired frame_lock\n", cur->tid);
       lock_acquire (&cur->spt->spt_lock);
+      printf ("pf - tid %d acquired spt_lock\n", cur->tid);
       switch (spte->location)
       {
           case NONE:
@@ -216,7 +204,7 @@ page_fault (struct intr_frame *f)
               success = load_swap (spte);
               break;
           case FS:
-              //printf ("FS spte info : \nspte->upage = 0x%x\nspte->fe = 0x%x\nspte->swap_slot_idx = %d\nspte->ofs = %d\nspte->location = %d\n", spte->upage, spte->fe, spte->swap_slot_idx, spte->ofs, spte->location);
+              printf ("FS spte info : \nspte->upage = 0x%x\nspte->fe = 0x%x\nspte->swap_slot_idx = %d\nspte->ofs = %d\nspte->location = %d\n", spte->upage, spte->fe, spte->swap_slot_idx, spte->ofs, spte->location);
               success = load_file (spte);
               break;
           default:
@@ -224,11 +212,12 @@ page_fault (struct intr_frame *f)
       }
       lock_release (&cur->spt->spt_lock);
       lock_release (&frame_lock);
+      printf ("tid %d released frame lock\n", cur->tid);
   }
   
   if (!success)
   {
-      my_kill ();
+      _exit (-1);
   }
 }
 

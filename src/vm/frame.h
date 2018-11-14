@@ -20,6 +20,7 @@ struct frame_entry
     // since it will not be changed easily
     
     struct list_elem elem;
+    struct list_elem pin_elem;
 };
 
 void frame_init (void);

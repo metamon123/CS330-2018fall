@@ -50,6 +50,8 @@ static struct frame_entry *select_victim (void)
 
 void frame_evict (void)
 {
+    //struct thread *cur = thread_current (); // for debugging
+    //printf ("[ frame_alloc - frame_evict starts in tid %d ]\n", cur->tid);
     struct frame_entry *victim = select_victim ();
     struct spt_entry *victim_spte = victim->spte;
 
@@ -58,8 +60,8 @@ void frame_evict (void)
 
     ASSERT (lock_held_by_current_thread (&frame_lock));
     ASSERT (victim_spte->location == MEM);
-
-    //printf ("[ frame_alloc - frame_evict ]\nvictim->kpage : 0x%x\nvictim->spte : 0x%x\nvictim->spte->upage : 0x%x\nvictim->spte->file : 0x%x\n", victim->kpage, victim->spte, victim->spte->upage, victim->spte->file);
+    
+    //printf ("[ frame_alloc - frame_evict in tid %d ]\nvictim->kpage : 0x%x\nvictim->spte : 0x%x\nvictim->spte->upage : 0x%x\nvictim->spte->file : 0x%x\n", cur->tid, victim->kpage, victim->spte, victim->spte->upage, victim->spte->file);
 
     /*
     if (victim_spte->is_mmapped && pagedir_is_dirty (victim_spte->spt->owner->pagedir, victim_spte->upage))
@@ -100,12 +102,12 @@ void frame_evict (void)
         victim_spte->swap_slot_idx = swap_slot_idx;
     }
 
-    //printf ("[ frame_alloc - frame_evict ] victim_spte->location = %d\n", victim_spte->location);
+    //printf ("[ frame_alloc - frame_evict in tid %d] victim_spte->location = %d\n", cur->tid, victim_spte->location);
     if (!is_sptlock_acquired) lock_release (&victim_spte->spt->spt_lock);
 }
 struct frame_entry *frame_alloc (enum palloc_flags flag, struct spt_entry *spte)
 {
-    //printf ("[ frame_alloc() ] started\n");
+    //printf ("[ frame_alloc() tid - %d ] started\n", thread_current ()->tid);
     ASSERT (lock_held_by_current_thread (&frame_lock));
     //printf ("here1\n");
     struct frame_entry *fe = (struct frame_entry *) malloc (sizeof (struct frame_entry));
@@ -131,7 +133,7 @@ struct frame_entry *frame_alloc (enum palloc_flags flag, struct spt_entry *spte)
     //printf ("1\n");
     list_push_back (&frame_list, &fe->elem);
     //printf ("11\n");
-    //printf ("[ frame_alloc() ] success, fe = 0x%x, kpage = 0x%x, upage = 0x%x\n", fe, kpage, spte->upage);
+    //printf ("[ frame_alloc() tid - %d ] success, fe = 0x%x, kpage = 0x%x, upage = 0x%x\n", thread_current ()->tid, fe, kpage, spte->upage);
     return fe;
 }
 

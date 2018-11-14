@@ -74,6 +74,7 @@ process_execute (const char *file_name)
   }
 
   sema_down (&sema_start);
+  printf ("created tid %d\n", tid);
   palloc_free_page (fn_copy); // -> start_process will free it
   if (!load_success)
   {
@@ -95,6 +96,7 @@ process_execute (const char *file_name)
 static void
 start_process (void *_aux)
 {
+  printf ("starts tid %d\n", thread_current ()->tid);
   void **aux = (void **)_aux;
   char *fn_copy = aux[0];
   struct semaphore *sema_startp = aux[1];
@@ -107,6 +109,7 @@ start_process (void *_aux)
   thread_current ()->is_process = true;
 #ifdef VM
   spt_init ();
+  printf ("spt_init finished in tid %d\n", thread_current ()->tid);
 #endif
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -120,15 +123,15 @@ start_process (void *_aux)
   //palloc_free_page (file_name);
   if (!success)
   {
-    // printf ("load failed, exitting...\n");
+    printf ("load failed, exitting...\n");
     *load_success = success;
     sema_up (sema_startp);
     thread_exit ();
   }
 
-  // printf ("load succeed, setting arguments...\n");
+  printf ("load succeed, setting arguments...\n");
   set_arguments (&if_.esp, fn_copy, init_filename_len);
-  // printf ("argument setting finished\n");
+  printf ("argument setting finished\n");
 
   *load_success = success;
   sema_up (sema_startp);
@@ -553,8 +556,13 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
+  printf ("setup_stack tid %d\n", thread_current ()->tid);
   if (!setup_stack (esp))
+  {
+    printf ("setup_stack failed tid %d\n", thread_current ()->tid);
     goto done;
+  }
+  printf ("setup_stack success tid %d\n", thread_current ()->tid);
 
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
@@ -712,9 +720,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
 
       // for debug
-      //PANIC ("load_segment - spte info : 0x%x\nspte->upage = 0x%x\nspte->fe->kpage : 0x%x\nspte->fe = 0x%x\nspte->swap_slot_idx = %d\nspte->ofs = %d\nspte->location = %d\n", spte, spte->upage, spte->fe->kpage, spte->fe, spte->swap_slot_idx, spte->ofs, spte->location);
-      
-      //msg ("load_segment - get_spte info : \nspte->upage = 0x%x\nspte->fe = 0x%x\nspte->swap_slot_idx = %d\nspte->ofs = %d\nspte->location = %d\n", spte->upage, spte->fe, spte->swap_slot_idx, spte->ofs, spte->location);
+      //printf ("load_segment tid %d - spte info : 0x%x\nspte->upage = 0x%x\nspte->fe->kpage : 0x%x\nspte->fe = 0x%x\nspte->swap_slot_idx = %d\nspte->ofs = %d\nspte->location = %d\n", spte->spt->owner->tid, spte, spte->upage, spte->fe->kpage, spte->fe, spte->swap_slot_idx, spte->ofs, spte->location);
 
 
       // Advance.
@@ -762,6 +768,8 @@ setup_stack (void **esp)
   spte->file = NULL;
 
 
+  printf ("here0 tid %d\n", cur->tid);
+  //printf ("frame_lock->holder : %d\n", frame_lock.holder->tid);
   lock_acquire (&frame_lock);
   struct frame_entry *fe = frame_alloc (PAL_USER | PAL_ZERO, spte);
   ASSERT (fe != NULL);
@@ -785,9 +793,11 @@ setup_stack (void **esp)
       return false;
   }
 
+  printf ("here1 tid %d\n", cur->tid);
   spte->location = MEM;
   spte->fe = fe;
   lock_acquire (&spte->spt->spt_lock);
+  printf ("here2 tid %d\n", cur->tid);
   if (!install_spte (spte->spt, spte))
   {
       lock_release (&spte->spt->spt_lock);
