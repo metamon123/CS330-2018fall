@@ -184,11 +184,11 @@ page_fault (struct intr_frame *f)
   }
   else
   {
-      printf ("[ page_fault tid %d] fault_addr : 0x%x | spte : 0x%x\n", cur->tid, fault_addr, spte);
+      //printf ("[ page_fault tid %d] fault_addr : 0x%x | spte : 0x%x\n", cur->tid, fault_addr, spte);
       lock_acquire (&frame_lock); // TODO: should be improved... it's a big overhead
-      printf ("pf - tid %d acquired frame_lock\n", cur->tid);
+      //printf ("pf - tid %d acquired frame_lock\n", cur->tid);
       lock_acquire (&cur->spt->spt_lock);
-      printf ("pf - tid %d acquired spt_lock\n", cur->tid);
+      //printf ("pf - tid %d acquired spt_lock\n", cur->tid);
       switch (spte->location)
       {
           case NONE:
@@ -204,7 +204,7 @@ page_fault (struct intr_frame *f)
               success = load_swap (spte);
               break;
           case FS:
-              printf ("FS spte info : \nspte->upage = 0x%x\nspte->fe = 0x%x\nspte->swap_slot_idx = %d\nspte->ofs = %d\nspte->location = %d\n", spte->upage, spte->fe, spte->swap_slot_idx, spte->ofs, spte->location);
+              //printf ("FS spte info : \nspte->upage = 0x%x\nspte->fe = 0x%x\nspte->swap_slot_idx = %d\nspte->ofs = %d\nspte->location = %d\n", spte->upage, spte->fe, spte->swap_slot_idx, spte->ofs, spte->location);
               success = load_file (spte);
               break;
           default:
@@ -212,7 +212,7 @@ page_fault (struct intr_frame *f)
       }
       lock_release (&cur->spt->spt_lock);
       lock_release (&frame_lock);
-      printf ("tid %d released frame lock\n", cur->tid);
+      //printf ("tid %d released frame lock\n", cur->tid);
   }
   
   if (!success)

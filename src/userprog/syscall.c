@@ -76,9 +76,10 @@ preload (uint32_t address, uint32_t size)
 {
   struct thread *cur = thread_current ();
   void *page;
-  void *last_page = pg_round_down ((void *)address + size);
+  void *last_page = pg_round_down ((void *)address + size - 1);
   for (page = pg_round_down ((void *)address); page <= last_page; page += PGSIZE)
   {
+      //printf ("in preload : page 0x%x\n", page);
       lock_acquire (&cur->spt->spt_lock);
       struct spt_entry *spte = get_spte (cur->spt, page);
       lock_release (&cur->spt->spt_lock);
@@ -109,9 +110,10 @@ preload (uint32_t address, uint32_t size)
           switch (spte->location)
           {
               case NONE:
+                  success = false;
                   break;
               case MEM:
-                  printf ("syscall spte check -> MEM, wrong situation\n");
+                  success = true;
                   break;
               case SWAP:
                   success = load_swap (spte);
@@ -136,7 +138,11 @@ preload (uint32_t address, uint32_t size)
           lock_release (&frame_lock);
       }
       if (!success)
+      {
+          //printf ("page 0x%x failed\n", page);
           return false;
+      }
+      //printf ("page 0x%x success\n", page);
   }
   return true;
 }
