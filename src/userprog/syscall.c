@@ -373,6 +373,31 @@ _seek (int fd, uint32_t pos)
     filesys_lock_release ();
 }
 
+static int
+_mmap (int fd, void *addr)
+{
+    // if addr == NULL or != PGSIZE * k => error (return -1)
+    if (addr == NULL || ((uint32_t) addr) % PGSIZE != 0)
+        return -1;
+
+    // get a file object with fd
+    // * not found => error (return -1)
+    // * fd = 0, 1 will be handled with error automatically
+    struct fd_elem *fdelem = fd_lookup (fd);
+    if (fdelem == NULL)
+        return -1;
+
+    struct file *file = fd_elem->file;
+
+    // file length == 0 => error
+    if (file_length (file) == 0)
+        return -1;
+
+    // TODO: How to check overwrapping?
+
+
+
+}
 void
 syscall_init (void) 
 {
@@ -486,6 +511,15 @@ syscall_handler (struct intr_frame *f UNUSED)
           break;
 
         _close (*(int *)(esp + 4));
+        bad_exit = false;
+        break;
+    case SYS_MMAP:
+        if (!check_uaddr (esp + 4, 4) || !check_uaddr (esp + 8, 4))
+          break;
+        f->eax = _mmap (*(int *)(esp + 4), *(void **)(esp + 8));
+        bad_exit = false;
+        break;
+    case SYS_MUNMAP:
         bad_exit = false;
         break;
     default:
