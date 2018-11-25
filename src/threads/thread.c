@@ -241,6 +241,10 @@ thread_create (const char *name, int priority,
   lock_init (&t->fd_lock);
   list_init (&t->file_list);
   t->executable = NULL;
+
+  t->next_mapid = 0;
+  lock_init (&t->mapid_lock);
+  list_init (&t->mmap_list);
 #endif
 
   /* Stack frame for kernel_thread(). */

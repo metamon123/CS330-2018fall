@@ -118,6 +118,10 @@ struct thread
     struct lock fd_lock;
     struct list file_list;
     struct file *executable;
+
+    int next_mapid;
+    struct lock mapid_lock;
+    struct list mmap_list;
 #endif
 
 #ifdef VM

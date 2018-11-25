@@ -20,5 +20,15 @@ struct fd_elem *fd_lookup (int);
 struct file *fd2file (int);
 int allocate_fd (void);
 
+struct mmap_elem {
+  int mapid;
+  void *start;
+  uint32_t len;
+  struct list_elem list_elem;
+};
+
+struct mmap_elem *mmap_lookup (int);
+int allocate_mapid (void);
+
 bool install_page (void *upage, void *kpage, bool writable);
 #endif /* userprog/process.h */

@@ -385,6 +385,41 @@ allocate_fd (void)
     PANIC ("Too many fds!\n");
   return return_fd;
 }
+
+struct mmap_elem *
+mmap_lookup (int mapid)
+{
+  struct thread *cur = thread_current ();
+  struct list_elem *e;
+  for (e = list_begin (&cur->mmap_list); e != list_end (&cur->mmap_list);
+       e = list_next (e))
+  {
+    struct mmap_elem *mmelem = list_entry (e, struct mmap_elem, list_elem);
+    ASSERT (mmelem != NULL);
+
+    if (mmelem->mapid == mapid)
+      return mmelem;
+  }
+  return NULL;
+}
+
+int
+allocate_mapid (void)
+{
+  struct thread *cur = thread_current ();
+  int return_mapid;
+
+  lock_acquire (&cur->mapid_lock);
+  
+  return_mapid = cur->next_mapid;
+  cur->next_mapid++;
+  
+  lock_release (&cur->mapid_lock);
+  
+  if (cur->next_mapid == 0)
+    PANIC ("Too many mmaps!\n");
+  return return_mapid;
+}
 /* We load ELF binaries.  The following definitions are taken
    from the ELF specification, [ELF1], more-or-less verbatim.  */
 
@@ -658,7 +693,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (ofs % PGSIZE == 0);
 
   struct thread *cur = thread_current ();
-  file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
       /* Do calculate how to fill this page.
@@ -666,32 +700,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
          and zero the final PAGE_ZERO_BYTES bytes. */
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
-/*
-      // Get a page of memory.
-      uint8_t *kpage = palloc_get_page (PAL_USER);
-      if (kpage == NULL)
-        return false;
-
-      // Load this page.
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
-
-      // Add the page to the process's address space.
-      if (!install_page (upage, kpage, writable)) 
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
-*/
-      // TODO on 3-2
-      // do special handling for the case where
-      // page_zero_bytes == PGSIZE
-
-      // TODO on 3-1
 
       struct spt_entry *spte = (struct spt_entry *) malloc (sizeof (struct spt_entry));
       spte->spt = cur->spt;
@@ -703,6 +711,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       spte->file = file;
       spte->ofs = ofs;
       spte->page_read_bytes = page_read_bytes;
+      spte->is_mmap = false;
 
       // spte->hash_elem (contains list_elem) does not need to be initialize. (list_insert does it)
 
@@ -766,6 +775,7 @@ setup_stack (void **esp)
   spte->swap_slot_idx = -1;
   spte->writable = true;
   spte->file = NULL;
+  spte->is_mmap = false;
 
 
   //printf ("here0 tid %d\n", cur->tid);

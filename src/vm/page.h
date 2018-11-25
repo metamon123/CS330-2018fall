@@ -11,7 +11,7 @@
 // MEM : page is in physical memory
 // SWAP : page is in swap disk
 // FS : page is in file system disk
-enum location {DUMMY, NONE, MEM, SWAP, FS};
+enum location {NONE, MEM, SWAP, FS};
 
 struct spt {
     struct thread *owner; // necessary?
@@ -38,6 +38,9 @@ struct spt_entry {
     struct file *file;
     off_t ofs;
     size_t page_read_bytes;
+
+    // MMAP case
+    bool is_mmap;
 
     struct hash_elem hash_elem;
 };

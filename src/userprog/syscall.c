@@ -388,15 +388,76 @@ _mmap (int fd, void *addr)
         return -1;
 
     struct file *file = fd_elem->file;
+    filesys_lock_acquire ();
+    file_reopen (file);
+    filesys_lock_release ();
+
+    uint32_t len = file_length (file);
 
     // file length == 0 => error
-    if (file_length (file) == 0)
+    if (len == 0)
         return -1;
 
-    // TODO: How to check overwrapping?
+    struct thread *cur = thread_current ();
+    uint32_t read_bytes = len;
+    off_t ofs = 0;
+    //uint32_t zero_bytes = ROUND_UP (read_bytes, PGSIZE) - read_bytes;
 
+    // Check overwrapping mappings, and register spt entries if there is no overwrapping.
+    lock_acquire (&cur->spt->spt_lock);
+    for (uint32_t upage = (uint32_t) addr; upage < (uint32_t) addr + len; upage += PGSIZE)
+    {
+        struct spt_entry *spte = get_spte (cur->spt, (void *)upage);
+        if (spte != NULL && spte->location != NONE)
+        {
+            lock_release (&cur->spt->spt_lock);
+            return -1;
+        }
+    }
 
+    struct mmap_elem *mmelem = (struct mmap_elem *) malloc (sizeof (struct mmap_elem));
+    mmelem->mapid = allocate_mapid ();
+    mmelem->start = addr;
+    mmelem->len = len;
+    list_push_back (&cur->mmap_list, &mmelem->list_elem);
 
+    while (read_bytes > 0)
+    {
+        size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
+        size_t page_zero_bytes = PGSIZE - page_read_bytes;
+
+        struct spt_entry *spte = (struct spt_entry *) malloc (sizeof (struct spt_entry));
+        spte->spt = cur->spt;
+        spte->upage = addr;
+        spte->location = FS;
+        spte->fe = NULL;
+        spte->swap_slot_idx = -1;
+        spte->writable = true;
+        spte->file = file;
+        spte->ofs = ofs;
+        spte->page_read_bytes = page_read_bytes;
+        spte->is_mmap = true;
+
+        if(!install_spte (spte->spt, spte))
+        {
+            lock_release (&spte->spt->spt_lock);
+            free (spte);
+            list_remove (&mmelem->list_elem);
+            free (mmelem);
+            // should remove all spte previously set.
+            // but it's tired. just panic
+            PANIC ("MMAP : install_spte failed");
+            return -1;
+        }
+
+        // Advance.
+        read_bytes -= page_read_bytes;
+        ofs += page_read_bytes;
+        addr += PGSIZE;
+    }
+    lock_release (&cur->spt->spt_lock);
+
+    return mmelem->mapid;
 }
 void
 syscall_init (void) 
