@@ -109,7 +109,6 @@ start_process (void *_aux)
   thread_current ()->is_process = true;
 #ifdef VM
   spt_init ();
-  //printf ("spt_init finished in tid %d\n", thread_current ()->tid);
 #endif
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -118,20 +117,14 @@ start_process (void *_aux)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (fn_copy, &if_.eip, &if_.esp);
 
-  // printf ("load complete\n");
-  /* If load failed, quit. */
-  //palloc_free_page (file_name);
   if (!success)
   {
-    //printf ("load failed, exitting...\n");
     *load_success = success;
     sema_up (sema_startp);
     thread_exit ();
   }
 
-  //printf ("load succeed, setting arguments...\n");
   set_arguments (&if_.esp, fn_copy, init_filename_len);
-  //printf ("argument setting finished\n");
 
   *load_success = success;
   sema_up (sema_startp);
@@ -216,8 +209,6 @@ set_arguments (void **_esp, char *fn_copy, size_t init_len)
 
   // later return address will be set here
   *_esp -= 4;
-  // TODO: remove hex_dump later
-  // hex_dump (*_esp, *_esp, PHYS_BASE - *_esp, true);
 }
 
 /* Waits for thread TID to die and returns its exit status.  If
@@ -313,8 +304,6 @@ process_exit (void)
   }
 
   spt_destroy (); // free all spte structure & corresponding frame_entry / frame / swap slot
-  // spt structure will not be freed yet,
-  // since its on struct thread (not malloc'd)
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -354,6 +343,7 @@ struct fd_elem *
 fd_lookup (int fd)
 {
   struct thread *cur = thread_current ();
+  
   // iterate cur->filelist, and return appropriate struct fd_elem *
   struct list_elem *e;
   for (e = list_begin (&cur->file_list); e != list_end (&cur->file_list);
@@ -429,6 +419,7 @@ allocate_mapid (void)
     PANIC ("Too many mmaps!\n");
   return return_mapid;
 }
+
 /* We load ELF binaries.  The following definitions are taken
    from the ELF specification, [ELF1], more-or-less verbatim.  */
 
@@ -589,8 +580,11 @@ load (const char *file_name, void (**eip) (void), void **esp)
                   read_bytes = 0;
                   zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
                 }
-              if (!load_segment (file, file_page, (void *) mem_page,
-                                 read_bytes, zero_bytes, writable))
+              filesys_lock_release ();
+              bool load_success = load_segment (file, file_page, (void *) mem_page,
+                                                read_bytes, zero_bytes, writable);
+              filesys_lock_acquire ();
+              if (!load_success)
                 goto done;
             }
           else
@@ -600,13 +594,13 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  //printf ("setup_stack tid %d\n", thread_current ()->tid);
+  filesys_lock_release ();
   if (!setup_stack (esp))
   {
-    //printf ("setup_stack failed tid %d\n", thread_current ()->tid);
+    filesys_lock_acquire ();
     goto done;
   }
-  //printf ("setup_stack success tid %d\n", thread_current ()->tid);
+  filesys_lock_acquire ();
 
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;

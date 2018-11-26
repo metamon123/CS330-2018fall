@@ -125,20 +125,20 @@ bool load_file (struct spt_entry *spte)
         // filesys_acquire by SYS_READ & page_fault while SYS_READ
         // check whether current thread has already acquired filesys_lock.
         
-        //bool is_fslock_acquired = lock_held_by_current_thread (&filesys_lock);
-        //if (!is_fslock_acquired) filesys_lock_acquire ();
+        bool is_fslock_acquired = lock_held_by_current_thread (&filesys_lock);
+        if (!is_fslock_acquired) filesys_lock_acquire ();
 
         off_t read_bytes = file_read_at (spte->file, fe->kpage, spte->page_read_bytes, spte->ofs);
         if (read_bytes != spte->page_read_bytes)
         {
             frame_free (fe);
-            //if (!is_fslock_acquired) filesys_lock_release ();
+            if (!is_fslock_acquired) filesys_lock_release ();
             return false;
         }
 
         //printf ("[load_file tid %d] here2\n", cur->tid);
 
-        //if (!is_fslock_acquired) filesys_lock_release ();
+        if (!is_fslock_acquired) filesys_lock_release ();
     }
     memset (fe->kpage + spte->page_read_bytes, 0, PGSIZE - spte->page_read_bytes);
 

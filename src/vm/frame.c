@@ -86,7 +86,12 @@ static void frame_evict (void)
         if (!is_fslock_acquired) filesys_lock_release ();
     }
     */
+    bool is_fslock_acquired = lock_held_by_current_thread (&filesys_lock);
+    if (!is_fslock_acquired) filesys_lock_acquire ();
+
     write_back (victim_spte);
+
+    if (!is_fslock_acquired) filesys_lock_release ();
 
     if (victim_spte->file != NULL && !victim_spte->writable)
     {
