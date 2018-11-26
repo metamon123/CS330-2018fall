@@ -110,8 +110,6 @@ bool load_file (struct spt_entry *spte)
 
 
     struct frame_entry *fe = frame_alloc (PAL_USER, spte);
-    //struct thread *cur = thread_current (); // for debugging
-    //printf ("[load_file tid %d] frame_alloc ended\n", cur->tid);
 
     ASSERT (fe != NULL);
 
@@ -120,7 +118,6 @@ bool load_file (struct spt_entry *spte)
     // read from file only if page_read_bytes > 0
     if (spte->page_read_bytes > 0)
     {
-        //printf ("[load_file tid %d] here\n", cur->tid);
         // ISSUE - Is it possible that caller already acquired filesys_lock?
         // filesys_acquire by SYS_READ & page_fault while SYS_READ
         // check whether current thread has already acquired filesys_lock.
@@ -136,8 +133,6 @@ bool load_file (struct spt_entry *spte)
             return false;
         }
 
-        //printf ("[load_file tid %d] here2\n", cur->tid);
-
         if (!is_fslock_acquired) filesys_lock_release ();
     }
     memset (fe->kpage + spte->page_read_bytes, 0, PGSIZE - spte->page_read_bytes);
@@ -149,7 +144,6 @@ bool load_file (struct spt_entry *spte)
         return false;
     }
 
-    //printf ("[load_file tid %d] normal end\n", cur->tid);
     spte->location = MEM;
     spte->fe = fe;
     fe->is_pin = false;
@@ -219,9 +213,6 @@ spte_destroy_func (const struct hash_elem *e, void *aux UNUSED)
     struct spt_entry *spte = hash_entry (e, struct spt_entry, hash_elem);
     ASSERT (spte != NULL);
 
-    //printf ("[ spte_destroy_func ] spte: 0x%x, spte->upage: 0x%x, spte->location: %d, spte->fe: 0x%x\n", spte, spte->upage, spte->location, spte->fe);
-    //lock_acquire (&frame_lock);
-    //lock_acquire (&spte->spt->spt_lock);
     switch (spte->location) 
     {
         case NONE:
@@ -230,7 +221,6 @@ spte_destroy_func (const struct hash_elem *e, void *aux UNUSED)
             // assuming that spte->MEM was done but spte->fe = fe was not done
             if (spte->fe != NULL)
             {
-                //printf ("spte->fe->kpage: 0x%x\n", spte->fe->kpage);
                 frame_free (spte->fe);
             }
             // If pagedir is set normally, clear it so that pagedir_destroy can free it appropriately
@@ -239,16 +229,12 @@ spte_destroy_func (const struct hash_elem *e, void *aux UNUSED)
                 pagedir_clear_page (pd, spte->upage);
             break;
         case SWAP:
-            // TODO: what should I do more?
             swap_slot_free (spte->swap_slot_idx);
             break;
         case FS:
-            // TODO: what should I do??
             break;
         default:
             PANIC ("[ spte_destroy_func() where spte->upage = 0x%x ] Invalid spte location : %d\n", spte->upage, spte->location);
     }
-    //lock_release (&spte->spt->spt_lock);
-    //lock_release (&frame_lock);
     free (spte);
 }

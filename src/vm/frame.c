@@ -15,7 +15,7 @@ void frame_init ()
 
 static struct frame_entry *select_victim (void)
 {
-    // page replacement policy : FIFO
+    // page replacement policy : Second chance
     
     ASSERT (lock_held_by_current_thread (&frame_lock));
     while (1)
@@ -61,8 +61,6 @@ void write_back (struct spt_entry *spte)
 
 static void frame_evict (void)
 {
-    //struct thread *cur = thread_current (); // for debugging
-    //printf ("[ frame_alloc - frame_evict starts in tid %d ]\n", cur->tid);
     struct frame_entry *victim = select_victim ();
     struct spt_entry *victim_spte = victim->spte;
 
@@ -72,25 +70,10 @@ static void frame_evict (void)
     ASSERT (lock_held_by_current_thread (&frame_lock));
     ASSERT (victim_spte->location == MEM);
     
-    //printf ("[ frame_alloc - frame_evict in tid %d ]\nvictim->kpage : 0x%x\nvictim->spte : 0x%x\nvictim->spte->upage : 0x%x\nvictim->spte->file : 0x%x\n", cur->tid, victim->kpage, victim->spte, victim->spte->upage, victim->spte->file);
 
-    /*
-    if (victim_spte->is_mmapped && pagedir_is_dirty (victim_spte->spt->owner->pagedir, victim_spte->upage))
-    {
-        // TODO: MMAP -> write back when modified
-        bool is_fslock_acquired = lock_held_by_current_thread (&filesys_lock);
-        if (!is_fslock_acquired) filesys_lock_acquire ();
-
-        file_write_at (victim_spte->file, victim->kpage, victim_spte->page_read_bytes, victim_spte->ofs);
-
-        if (!is_fslock_acquired) filesys_lock_release ();
-    }
-    */
     bool is_fslock_acquired = lock_held_by_current_thread (&filesys_lock);
     if (!is_fslock_acquired) filesys_lock_acquire ();
-
     write_back (victim_spte);
-
     if (!is_fslock_acquired) filesys_lock_release ();
 
     if (victim_spte->file != NULL && !victim_spte->writable)
@@ -119,15 +102,12 @@ static void frame_evict (void)
         victim_spte->swap_slot_idx = swap_slot_idx;
     }
 
-    //printf ("[ frame_alloc - frame_evict in tid %d] victim_spte->location = %d\n", cur->tid, victim_spte->location);
     if (!is_sptlock_acquired) lock_release (&victim_spte->spt->spt_lock);
 }
 
 struct frame_entry *frame_alloc (enum palloc_flags flag, struct spt_entry *spte)
 {
-    //printf ("[ frame_alloc() tid - %d ] started\n", thread_current ()->tid);
     ASSERT (lock_held_by_current_thread (&frame_lock));
-    //printf ("here1\n");
     struct frame_entry *fe = (struct frame_entry *) malloc (sizeof (struct frame_entry));
     if (fe == NULL)
     {
@@ -139,19 +119,13 @@ struct frame_entry *frame_alloc (enum palloc_flags flag, struct spt_entry *spte)
     void *kpage;
     while ((kpage = palloc_get_page (flag)) == NULL)
     {
-        //PANIC ("[ frame_alloc() ] User pool is full & frame_evict is not implemented yet\n");
-        //free (fe);
-        //return NULL;
         frame_evict ();
     }
 
     fe->is_pin = true;
     fe->kpage = kpage;
     fe->spte = spte;
-    //printf ("1\n");
     list_push_back (&frame_list, &fe->elem);
-    //printf ("11\n");
-    //printf ("[ frame_alloc() tid - %d ] success, fe = 0x%x, kpage = 0x%x, upage = 0x%x\n", thread_current ()->tid, fe, kpage, spte->upage);
     return fe;
 }
 
@@ -160,11 +134,8 @@ void frame_free (struct frame_entry *fe)
 {
     ASSERT (fe != NULL);
     ASSERT (lock_held_by_current_thread (&frame_lock));
-    //printf ("[ frame_free() ] success, fe = 0x%x, kpage = 0x%x, upage = 0x%x\n", fe, fe->kpage, fe->spte->upage);
     list_remove (&fe->elem);
     
-    // maybe spt lock will be needed
-    // pagedir_clear_page (fe->spte->spt->owner->pagedir, fe->spte->upage);
     palloc_free_page (fe->kpage);
     free (fe);
 }

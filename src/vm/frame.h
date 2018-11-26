@@ -15,9 +15,6 @@ struct frame_entry
     bool is_pin; // do not evict the frame if is_pin == true
     void *kpage; // kernel vaddr of physicall addr of the frame
     struct spt_entry *spte;
-    //bool writable;
-    // don't check writable from spte
-    // since it will not be changed easily
     
     struct list_elem elem;
     struct list_elem pin_elem;
