@@ -80,10 +80,10 @@ static void frame_evict (void)
     // => No need for swap out. They can be recovered from file system
     if (victim_spte->file != NULL && (!victim_spte->writable || victim_spte->is_mmap))
     {
-        enum intr_level old_level = intr_disable ();
-        frame_free (victim);
+        //enum intr_level old_level = intr_disable ();
         pagedir_clear_page (victim_spte->spt->owner->pagedir, victim_spte->upage);
-        intr_set_level (old_level);
+        frame_free (victim);
+        //intr_set_level (old_level);
 
         victim_spte->location = FS;
         victim_spte->fe = NULL;
@@ -94,10 +94,10 @@ static void frame_evict (void)
         // swap_out : copy data to swap disk (swap_lock will be done in swap_out)
         size_t swap_slot_idx = swap_out (victim->kpage);
 
-        enum intr_level old_level = intr_disable ();
-        frame_free (victim);
+        //enum intr_level old_level = intr_disable ();
         pagedir_clear_page (victim_spte->spt->owner->pagedir, victim_spte->upage);
-        intr_set_level (old_level);
+        frame_free (victim);
+        //intr_set_level (old_level);
 
         victim_spte->location = SWAP;
         victim_spte->fe = NULL;
