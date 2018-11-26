@@ -409,7 +409,7 @@ _mmap (int fd, void *addr)
     off_t ofs = 0;
     //uint32_t zero_bytes = ROUND_UP (read_bytes, PGSIZE) - read_bytes;
 
-    // Check overwrapping mappings, and register spt entries if there is no overwrapping.
+    // Check overlapping mappings, and register spt entries if there is no overwrapping.
     lock_acquire (&cur->spt->spt_lock);
     uint32_t upage;
     for (upage = (uint32_t) addr; upage < (uint32_t) addr + len; upage += PGSIZE)
