@@ -60,6 +60,24 @@ struct spt_entry *get_spte (struct spt *spt, void *upage)
     return he != NULL ? hash_entry (he, struct spt_entry, hash_elem) : NULL;
 }
 
+// Remove spt_entry from spt_hash.
+// It does not deallocate returned spt_entry, it's up to caller
+struct spt_entry *spte_delete (struct spt *spt, void *upage)
+{
+    struct spt_entry spte;
+    struct hash_elem *he;
+    
+    spte.upage = pg_round_down (upage);
+    he = hash_delete (&spt->spt_hash, &spte.hash_elem);
+    
+    if (he != NULL)
+    {
+        return hash_entry (he, struct spt_entry, hash_elem);
+    }
+    else
+        return NULL;
+}
+
 bool load_swap (struct spt_entry *spte)
 {
     ASSERT (spte != NULL);

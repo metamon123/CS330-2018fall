@@ -48,7 +48,18 @@ static struct frame_entry *select_victim (void)
     }
 }
 
-void frame_evict (void)
+void write_back (struct spt_entry *spte)
+{
+    if (spte != NULL && spte->is_mmap && spte->location == MEM && spte->fe != NULL && pagedir_is_dirty (spte->spt->owner->pagedir, spte->upage))
+    {
+        ASSERT (spte->file != NULL);
+        // filesys lock?
+        file_write_at (spte->file, spte->fe->kpage, spte->page_read_bytes, spte->ofs);
+    }
+
+}
+
+static void frame_evict (void)
 {
     //struct thread *cur = thread_current (); // for debugging
     //printf ("[ frame_alloc - frame_evict starts in tid %d ]\n", cur->tid);
@@ -75,6 +86,7 @@ void frame_evict (void)
         if (!is_fslock_acquired) filesys_lock_release ();
     }
     */
+    write_back (victim_spte);
 
     if (victim_spte->file != NULL && !victim_spte->writable)
     {
@@ -105,6 +117,7 @@ void frame_evict (void)
     //printf ("[ frame_alloc - frame_evict in tid %d] victim_spte->location = %d\n", cur->tid, victim_spte->location);
     if (!is_sptlock_acquired) lock_release (&victim_spte->spt->spt_lock);
 }
+
 struct frame_entry *frame_alloc (enum palloc_flags flag, struct spt_entry *spte)
 {
     //printf ("[ frame_alloc() tid - %d ] started\n", thread_current ()->tid);

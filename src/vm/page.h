@@ -49,6 +49,7 @@ void spt_init (void);
 void spt_destroy (void);
 bool install_spte (struct spt *spt, struct spt_entry *spte);
 struct spt_entry *get_spte (struct spt *spt, void *upage);
+struct spt_entry *spte_delete (struct spt *spt, void *upage);
 
 bool load_swap (struct spt_entry *spte);
 bool load_file (struct spt_entry *spte);

@@ -3,4 +3,5 @@
 
 void syscall_init (void);
 void _exit (int status);
+void _unmap (int mapid);
 #endif /* userprog/syscall.h */

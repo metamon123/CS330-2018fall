@@ -387,36 +387,47 @@ _mmap (int fd, void *addr)
     if (fdelem == NULL)
         return -1;
 
-    struct file *file = fd_elem->file;
     filesys_lock_acquire ();
-    file_reopen (file);
+    struct file *file = file_reopen (fdelem->file);
     filesys_lock_release ();
 
     uint32_t len = file_length (file);
 
     // file length == 0 => error
     if (len == 0)
+    {
+        filesys_lock_acquire ();
+        file_close (file);
+        filesys_lock_release ();
         return -1;
+    }
 
+    //printf ("here1\n");
     struct thread *cur = thread_current ();
+    //printf ("here2\n");
     uint32_t read_bytes = len;
     off_t ofs = 0;
     //uint32_t zero_bytes = ROUND_UP (read_bytes, PGSIZE) - read_bytes;
 
     // Check overwrapping mappings, and register spt entries if there is no overwrapping.
     lock_acquire (&cur->spt->spt_lock);
-    for (uint32_t upage = (uint32_t) addr; upage < (uint32_t) addr + len; upage += PGSIZE)
+    uint32_t upage;
+    for (upage = (uint32_t) addr; upage < (uint32_t) addr + len; upage += PGSIZE)
     {
         struct spt_entry *spte = get_spte (cur->spt, (void *)upage);
         if (spte != NULL && spte->location != NONE)
         {
             lock_release (&cur->spt->spt_lock);
+            filesys_lock_acquire ();
+            file_close (file);
+            filesys_lock_release ();
             return -1;
         }
     }
 
     struct mmap_elem *mmelem = (struct mmap_elem *) malloc (sizeof (struct mmap_elem));
     mmelem->mapid = allocate_mapid ();
+    mmelem->file = file;
     mmelem->start = addr;
     mmelem->len = len;
     list_push_back (&cur->mmap_list, &mmelem->list_elem);
@@ -459,6 +470,74 @@ _mmap (int fd, void *addr)
 
     return mmelem->mapid;
 }
+
+void
+_unmap (int mapid)
+{
+    struct mmap_elem *mmelem = mmap_lookup (mapid);
+    if (mmelem == NULL)
+    {
+        return;
+    }
+
+    ASSERT ((uint32_t) mmelem->start % PGSIZE == 0);
+
+    struct thread *cur = thread_current ();
+    uint32_t page;
+    for (page = (uint32_t) mmelem->start; page < (uint32_t) mmelem->start + mmelem->len; page += PGSIZE)
+    {
+        //printf ("unmapping all region for mapid %d\n", mapid);
+        //printf ("here3\n");
+        lock_acquire (&cur->spt->spt_lock);
+        struct spt_entry *spte = spte_delete (cur->spt, page);
+        lock_release (&cur->spt->spt_lock);
+        //printf ("here4\n");
+        if (spte == NULL)
+        {
+            // TODO: more specific error msg is needed
+            printf ("no spte for upage %d\n", page);
+            return;
+        }
+        
+        ASSERT (spte->is_mmap);
+        
+        lock_acquire (&frame_lock);
+        lock_acquire (&cur->spt->spt_lock);
+        switch (spte->location)
+        {
+            case NONE:
+                printf ("mmap spte->location == NONE\n");
+                break;
+            case MEM:
+                ASSERT (spte->fe != NULL);
+                
+                write_back (spte);
+                frame_free (spte->fe);
+
+                uint32_t *pd = spte->spt->owner->pagedir;
+                if (pd != NULL)
+                    pagedir_clear_page (pd, spte->upage);
+                break;
+            case SWAP:
+                swap_slot_free (spte->swap_slot_idx);
+                break;
+            case FS:
+                break;
+            default:
+                PANIC ("[ _unmap() where spte->upage == 0x%x ] Invalid spte->loction = %d", spte->upage, spte->location);
+        }
+        lock_release (&cur->spt->spt_lock);
+        lock_release (&frame_lock);
+        free (spte);
+    }
+
+    list_remove (&mmelem->list_elem);
+    filesys_lock_acquire ();
+    file_close (mmelem->file);
+    filesys_lock_release ();
+    free (mmelem);
+}
+
 void
 syscall_init (void) 
 {
@@ -581,6 +660,9 @@ syscall_handler (struct intr_frame *f UNUSED)
         bad_exit = false;
         break;
     case SYS_MUNMAP:
+        if (!check_uaddr (esp + 4, 4))
+          break;
+        _unmap (*(int *)(esp + 4));
         bad_exit = false;
         break;
     default:

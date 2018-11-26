@@ -25,5 +25,6 @@ struct frame_entry
 
 void frame_init (void);
 struct frame_entry *frame_alloc (enum palloc_flags, struct spt_entry *);
+void write_back (struct spt_entry *);
 void frame_free (struct frame_entry *);
 #endif

@@ -301,11 +301,20 @@ process_exit (void)
     sema_up (&_t->sema_destroy);
   }
 
-  // DONE: synchronize spt_destroy
+  e = list_begin (&curr->mmap_list);
+  while (e != list_end (&curr->mmap_list))
+  {
+    struct mmap_elem *mmelem = list_entry (e, struct mmap_elem, list_elem);
+
+    ASSERT (mmelem != NULL);
+
+    e = list_next (e); // remove will be done in _unmap
+    _unmap (mmelem->mapid);
+  }
+
   spt_destroy (); // free all spte structure & corresponding frame_entry / frame / swap slot
   // spt structure will not be freed yet,
   // since its on struct thread (not malloc'd)
-  //printf ("spt_destroy finished\n"); 
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */

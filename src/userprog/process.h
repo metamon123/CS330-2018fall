@@ -22,6 +22,7 @@ int allocate_fd (void);
 
 struct mmap_elem {
   int mapid;
+  struct file *file;
   void *start;
   uint32_t len;
   struct list_elem list_elem;
