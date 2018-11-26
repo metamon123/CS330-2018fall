@@ -53,7 +53,7 @@ void write_back (struct spt_entry *spte)
     if (spte != NULL && spte->is_mmap && spte->location == MEM && spte->fe != NULL && pagedir_is_dirty (spte->spt->owner->pagedir, spte->upage))
     {
         ASSERT (spte->file != NULL);
-        // filesys lock?
+        // filesys lock? (acquired and released by caller)
         file_write_at (spte->file, spte->fe->kpage, spte->page_read_bytes, spte->ofs);
     }
 
@@ -76,7 +76,9 @@ static void frame_evict (void)
     write_back (victim_spte);
     if (!is_fslock_acquired) filesys_lock_release ();
 
-    if (victim_spte->file != NULL && !victim_spte->writable)
+    // non-writable OR mmapped region originated from file system
+    // => No need for swap out. They can be recovered from file system
+    if (victim_spte->file != NULL && (!victim_spte->writable || victim_spte->is_mmap))
     {
         enum intr_level old_level = intr_disable ();
         frame_free (victim);
@@ -88,7 +90,7 @@ static void frame_evict (void)
     }
     else
     {
-        // file == NULL OR (file != NULL but writable)
+        // file == NULL OR (file != NULL but (writable and not mmapped region))
         // swap_out : copy data to swap disk (swap_lock will be done in swap_out)
         size_t swap_slot_idx = swap_out (victim->kpage);
 
