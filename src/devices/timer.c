@@ -8,7 +8,11 @@
 #include "threads/io.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
-  
+
+#ifdef FILESYS
+#include "filesys/cache.h"
+#endif
+
 /* See [8254] for hardware details of the 8254 timer chip. */
 
 #if TIMER_FREQ < 19
@@ -159,7 +163,7 @@ timer_print_stats (void)
 {
   printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
-
+
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
@@ -195,6 +199,11 @@ timer_interrupt (struct intr_frame *args UNUSED)
       break;
   }
 
+#ifdef FILESYS
+  // flush entire buffer cache in every 50 ticks
+  if (ticks % 50 == 0)
+      cache_flush_all ();
+#endif
   thread_tick ();
 }
 

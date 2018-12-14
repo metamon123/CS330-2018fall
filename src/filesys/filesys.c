@@ -8,6 +8,10 @@
 #include "filesys/directory.h"
 #include "devices/disk.h"
 
+#ifdef FILESYS
+#include "filesys/cache.h"
+#endif
+
 /* The disk that contains the file system. */
 struct disk *filesys_disk;
 
@@ -29,6 +33,10 @@ filesys_init (bool format)
     do_format ();
 
   free_map_open ();
+
+#ifdef FILESYS
+  cache_init ();
+#endif
 }
 
 /* Shuts down the file system module, writing any unwritten data
@@ -36,6 +44,10 @@ filesys_init (bool format)
 void
 filesys_done (void) 
 {
+#ifdef FILESYS
+  cache_flush_all ();
+#endif
+
   free_map_close ();
 }
 
