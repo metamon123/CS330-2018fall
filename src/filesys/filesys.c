@@ -22,6 +22,9 @@ static void do_format (void);
 void
 filesys_init (bool format) 
 {
+#ifdef FILESYS
+  cache_init ();
+#endif
   filesys_disk = disk_get (0, 1);
   if (filesys_disk == NULL)
     PANIC ("hd0:1 (hdb) not present, file system initialization failed");
@@ -33,10 +36,6 @@ filesys_init (bool format)
     do_format ();
 
   free_map_open ();
-
-#ifdef FILESYS
-  cache_init ();
-#endif
 }
 
 /* Shuts down the file system module, writing any unwritten data

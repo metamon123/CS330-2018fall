@@ -1,7 +1,8 @@
 #include "filesys/cache.h"
 #include "threads/synch.h"
-#include "device/disk.h"
-
+#include "devices/disk.h"
+#include "filesys/filesys.h"
+#include <debug.h>
 static struct cache_entry cache[64];
 static struct lock cache_lock;
 
@@ -182,6 +183,7 @@ cache_write_at (disk_sector_t sector, void *buf, off_t ofs, int len)
     ASSERT (ce != NULL);
 
     ce->is_second = false;
+    ce->is_dirty = true;
     memcpy (ce->data + ofs, buf, len);
     
     lock_release (&cache_lock);
