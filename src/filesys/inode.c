@@ -172,6 +172,138 @@ alloc_single_indirect (disk_sector_t *sector, int *sectors)
     return true;
 }
 
+static void
+inode_extend (struct inode *inode, off_t new_length)
+{
+    ASSERT (inode != NULL);
+
+    int i;
+    off_t length = inode_length (inode);
+    if (length >= new_length) return;
+
+    struct inode_disk *disk_inode = (struct inode_disk *) malloc (DISK_SECTOR_SIZE);
+    if (disk_inode == NULL)
+        PANIC ("No memory for malloc");
+    cache_read (inode->sector, disk_inode);
+
+    disk_inode->length = new_length;
+
+    // sector indexes
+    int next_idx = bytes_to_sectors (length) + 1;
+    int goal_idx = bytes_to_sectors (new_length);
+
+    // how many sectors should be allocated additionally?
+    int sectors = goal_idx - next_idx + 1;
+
+    while (next_idx >= 0 && next_idx <= D_MAX && sectors > 0)//next_idx <= goal_idx)//sectors > 0)
+    {
+        if (!free_map_allocate (1, &disk_inode->direct_sectors[next_idx]))
+            PANIC ("free_map_allocate failed");
+        cache_write (disk_inode->direct_sectors[next_idx], zeros);
+        next_idx += 1;
+        sectors -= 1;
+    }
+
+    if (next_idx > D_MAX && next_idx <= SIND_MAX && sectors > 0)//next_idx <= goal_idx)//sectors > 0)
+    {
+        disk_sector_t *buf = (disk_sector_t *) malloc (DISK_SECTOR_SIZE);
+        if (buf == NULL)
+            PANIC ("No space for malloc");
+
+        // if sind_sector is not set yet, allocate and initialize it.
+        // else, load data from sind_sector
+        if (disk_inode->sind_sector == NONE)
+        {
+            if (!free_map_allocate (1, &disk_inode->sind_sector))
+                PANIC ("free_map_allocate failed");
+            for (i = 0; i < SECTOR_PER_SINGLE; ++i)
+                buf[i] = NONE;
+        }
+        else
+            cache_read (disk_inode->sind_sector, buf);
+
+        for (i = next_idx - D_MAX - 1; i < SECTOR_PER_SINGLE; ++i)
+        {
+            if (sectors <= 0)
+                break;
+            if (!free_map_allocate (1, &buf[i]))
+            {
+                //free (buf);
+                PANIC ("free_map_allocate failed");
+            }
+            cache_write (buf[i], zeros);
+            next_idx += 1;
+            sectors -= 1;
+        }
+
+        cache_write (disk_inode->sind_sector, buf);
+        free (buf);
+    }
+
+    if (next_idx > SIND_MAX && next_idx <= DIND_MAX && sectors > 0)//next_idx <= goal_idx)
+    {
+        disk_sector_t *out_buf = (disk_sector_t *) malloc (DISK_SECTOR_SIZE);
+        if (out_buf == NULL)
+            PANIC ("No space for malloc");
+
+        if (disk_inode->dind_sector == NONE)
+        {
+            if (!free_map_allocate (1, &disk_inode->dind_sector))
+                PANIC ("free_map_allocate failed");
+            for (i = 0; i < SECTOR_PER_SINGLE; ++i)
+                out_buf[i] = NONE;
+        }
+        else
+            cache_read (disk_inode->dind_sector, out_buf);
+
+        // Handle initial part
+        int sind_idx = (next_idx - SIND_MAX - 1) / SECTOR_PER_SINGLE;
+        int direct_idx = (next_idx - SIND_MAX - 1) % SECTOR_PER_SINGLE;
+
+        disk_sector_t *in_buf = (disk_sector_t *) malloc (DISK_SECTOR_SIZE);
+        if (in_buf == NULL)
+            PANIC ("No space for malloc");
+
+        if (out_buf[sind_idx] == NONE)
+        {
+            if (!free_map_allocate (1, &out_buf[sind_idx]))
+                PANIC ("free_map_allocate failed");
+            for (i = 0; i < SECTOR_PER_SINGLE; ++i)
+                in_buf[i] = NONE;
+        }
+        else
+            cache_read (out_buf[sind_idx], in_buf);
+
+        for (i = direct_idx; i < SECTOR_PER_SINGLE; ++i)
+        {
+            if (sectors <= 0)
+                break;
+            if (!free_map_allocate (1, &in_buf[i]))
+                PANIC ("free_map_allocate failed");
+            cache_write (in_buf[i], zeros);
+            //next_idx += 1; // will not be used anymore
+            sectors -= 1;
+        }
+        cache_write (out_buf[sind_idx], in_buf);
+        free (in_buf);
+
+        // Rest part will be handled by alloc_single_indirect
+        for (i = sind_idx + 1; i < SECTOR_PER_SINGLE; ++i)
+        {
+            if (sectors <= 0)
+                break;
+            if (!alloc_single_indirect (&out_buf[i], &sectors))
+                PANIC ("free_map_allocate failed");
+        }
+
+        cache_write (disk_inode->dind_sector, out_buf);
+        free (out_buf);
+    }
+
+    cache_write (inode->sector, disk_inode);
+    free (disk_inode);
+}
+
 /* Initializes an inode with LENGTH bytes of data and
    writes the new inode to sector SECTOR on the file system
    disk.
