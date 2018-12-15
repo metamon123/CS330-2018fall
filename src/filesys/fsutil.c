@@ -106,11 +106,11 @@ fsutil_put (char **argv)
     PANIC ("couldn't open source disk (hdc or hd1:0)");
 
   /* Read file size. */
-  if (src == filesys_disk)
-      cache_read (sector++, buffer);
-  else
-      disk_read (src, sector++, buffer);
-
+  //if (src == filesys_disk)
+      //cache_read (sector++, buffer);
+  //else
+      //disk_read (src, sector++, buffer);
+  disk_read (src, sector++, buffer);
   if (memcmp (buffer, "PUT", 4))
     PANIC ("%s: missing PUT signature on scratch disk", file_name);
   size = ((int32_t *) buffer)[1];
@@ -128,10 +128,11 @@ fsutil_put (char **argv)
   while (size > 0)
     {
       int chunk_size = size > DISK_SECTOR_SIZE ? DISK_SECTOR_SIZE : size;
-      if (src == filesys_disk)
-          cache_read (sector++, buffer);
-      else
-          disk_read (src, sector++, buffer);
+      //if (src == filesys_disk)
+          //cache_read (sector++, buffer);
+      //else
+          //disk_read (src, sector++, buffer);
+      disk_read (src, sector++, buffer);
       if (file_write (dst, buffer, chunk_size) != chunk_size)
         PANIC ("%s: write failed with %"PROTd" bytes unwritten",
                file_name, size);
@@ -187,10 +188,11 @@ fsutil_get (char **argv)
   memset (buffer, 0, DISK_SECTOR_SIZE);
   memcpy (buffer, "GET", 4);
   ((int32_t *) buffer)[1] = size;
-  if (dst == filesys_disk)
-      cache_write (sector++, buffer);
-  else
-      disk_write (dst, sector++, buffer);
+  //if (dst == filesys_disk)
+      //cache_write (sector++, buffer);
+  //else
+      //disk_write (dst, sector++, buffer);
+  disk_write (dst, sector++, buffer);
   
   /* Do copy. */
   while (size > 0) 
@@ -201,10 +203,11 @@ fsutil_get (char **argv)
       if (file_read (src, buffer, chunk_size) != chunk_size)
         PANIC ("%s: read failed with %"PROTd" bytes unread", file_name, size);
       memset (buffer + chunk_size, 0, DISK_SECTOR_SIZE - chunk_size);
-      if (dst == filesys_disk)
-          cache_write (sector++, buffer);
-      else
-          disk_write (dst, sector++, buffer);
+      //if (dst == filesys_disk)
+          //cache_write (sector++, buffer);
+      //else
+          //disk_write (dst, sector++, buffer);
+      disk_write (dst, sector++, buffer);
       size -= chunk_size;
     }
 

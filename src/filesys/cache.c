@@ -1,8 +1,13 @@
 #include "filesys/cache.h"
 #include "threads/synch.h"
+#include "threads/thread.h"
 #include "devices/disk.h"
+#include "devices/timer.h"
 #include "filesys/filesys.h"
+#include "threads/interrupt.h"
 #include <debug.h>
+#include <stdbool.h>
+
 static struct cache_entry cache[64];
 static struct lock cache_lock;
 
@@ -17,6 +22,7 @@ cache_init ()
     }
 
     lock_init (&cache_lock);
+    thread_create ("periodic_flusher", PRI_DEFAULT, cache_periodic_flush, NULL);
 }
 
 static struct cache_entry *
@@ -38,11 +44,20 @@ write_back_entry (struct cache_entry *ce)
 {
     ASSERT (ce != NULL && ce->is_valid);
 
+    enum intr_level old_level;
+
     // write_behind
-    if (ce->is_dirty)
+    old_level = intr_disable ();
+
+    bool is_dirty = ce->is_dirty;
+    if (is_dirty) ce->is_dirty = false;
+
+    intr_set_level (old_level);
+
+
+    if (is_dirty)
     {
         disk_write (filesys_disk, ce->sector, ce->data);
-        ce->is_dirty = false;
     }
 }
 
@@ -56,10 +71,9 @@ cache_flush_all ()
     {
         struct cache_entry *ce = &cache[i];
 
-        lock_acquire (&cache_lock);
+        // no need of lock
         if (ce->is_valid)
             write_back_entry (ce);
-        lock_release (&cache_lock);
     }
 }
 
@@ -183,10 +197,23 @@ cache_write_at (disk_sector_t sector, void *buf, off_t ofs, int len)
     ASSERT (ce != NULL);
 
     ce->is_second = false;
-    ce->is_dirty = true;
+    //ce->is_dirty = true;
     memcpy (ce->data + ofs, buf, len);
+    
+    // dirty bit setting should be done after memcpy
+    // since timer_interrupt >> cache_flush_all can
+    // can clean dirty bit without correct write-back
+    ce->is_dirty = true; 
     
     lock_release (&cache_lock);
 }
 
-
+void
+cache_periodic_flush (void *aux UNUSED)
+{
+    while (1)
+    {
+        timer_sleep (50);
+        cache_flush_all ();
+    }
+}

@@ -169,7 +169,6 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   struct list_elem *e;
-  struct thread *t;
   ASSERT (intr_get_level () == INTR_OFF);
   ticks++;
 
@@ -201,8 +200,8 @@ timer_interrupt (struct intr_frame *args UNUSED)
 
 #ifdef FILESYS
   // flush entire buffer cache in every 50 ticks
-  if (ticks % 50 == 0)
-      cache_flush_all ();
+  //if (ticks % 5 == 0 && cache_ready ())
+    //cache_flush_all ();
 #endif
   thread_tick ();
 }
