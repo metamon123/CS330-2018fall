@@ -44,21 +44,15 @@ write_back_entry (struct cache_entry *ce)
 {
     ASSERT (ce != NULL && ce->is_valid);
 
-    enum intr_level old_level;
-
     // write_behind
-    old_level = intr_disable ();
-
-    bool is_dirty = ce->is_dirty;
-    if (is_dirty) ce->is_dirty = false;
-
-    intr_set_level (old_level);
-
-
-    if (is_dirty)
+    bool lock_already_held = lock_held_by_current_thread (&cache_lock);
+    if (!lock_already_held) lock_acquire (&cache_lock);
+    if (ce->is_dirty)
     {
         disk_write (filesys_disk, ce->sector, ce->data);
+        ce->is_dirty = false;
     }
+    if (!lock_already_held) lock_release (&cache_lock);
 }
 
 
@@ -71,7 +65,7 @@ cache_flush_all ()
     {
         struct cache_entry *ce = &cache[i];
 
-        // no need of lock
+        // no need of lock at this level
         if (ce->is_valid)
             write_back_entry (ce);
     }
