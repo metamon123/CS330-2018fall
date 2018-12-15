@@ -198,11 +198,6 @@ timer_interrupt (struct intr_frame *args UNUSED)
       break;
   }
 
-#ifdef FILESYS
-  // flush entire buffer cache in every 50 ticks
-  //if (ticks % 5 == 0 && cache_ready ())
-    //cache_flush_all ();
-#endif
   thread_tick ();
 }
 
