@@ -13,16 +13,40 @@
 
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
+#define NONE -1
+
+#define DIRECT_NUM 124
+#define SECTOR_PER_SINGLE 128
+
+// max index among direct sectors (123)
+#define D_MAX DIRECT_NUM - 1
+
+// max index among single-indirect sectors (251)
+#define SIND_MAX D_MAX + SECTOR_PER_SINGLE
+
+// max index among double-indirect sectors (32507)
+#define DIND_MAX SIND_MAX + (SIND_MAX + 1) * SECTOR_PER_SINGLE
+
+static char zeros[DISK_SECTOR_SIZE];
 
 /* On-disk inode.
    Must be exactly DISK_SECTOR_SIZE bytes long. */
-struct inode_disk
+struct _inode_disk
   {
     disk_sector_t start;                /* First data sector. */
     off_t length;                       /* File size in bytes. */
     unsigned magic;                     /* Magic number. */
     uint32_t unused[125];               /* Not used. */
   };
+
+struct inode_disk
+{
+    off_t length;
+    disk_sector_t direct_sectors[DIRECT_NUM]; // direct block pointers
+    disk_sector_t sind_sector;          // single-indirect block pointer
+    disk_sector_t dind_sector;          // double-indirect block pointer
+    unsigned magic;
+};
 
 /* Returns the number of sectors to allocate for an inode SIZE
    bytes long. */
@@ -33,6 +57,7 @@ bytes_to_sectors (off_t size)
 }
 
 /* In-memory inode. */
+/* On-disk inode + meta data needed in kernel */
 struct inode 
   {
     struct list_elem elem;              /* Element in inode list. */
@@ -40,7 +65,7 @@ struct inode
     int open_cnt;                       /* Number of openers. */
     bool removed;                       /* True if deleted, false otherwise. */
     int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
-    struct inode_disk data;             /* Inode content. */
+    //struct inode_disk data;             /* Inode content. */
   };
 
 /* Returns the disk sector that contains byte offset POS within
@@ -51,10 +76,58 @@ static disk_sector_t
 byte_to_sector (const struct inode *inode, off_t pos) 
 {
   ASSERT (inode != NULL);
-  if (pos < inode->data.length)
-    return inode->data.start + pos / DISK_SECTOR_SIZE;
-  else
-    return -1;
+  ASSERT (DISK_SECTOR_SIZE == sizeof (struct inode_disk));
+
+  disk_sector_t sector = -1;
+  printf ("sizeof (disk_sector_t sector) == %d\n", sizeof (sector));
+
+  struct inode_disk *disk_inode = (struct inode_disk *) malloc (DISK_SECTOR_SIZE);
+  if (disk_inode == NULL)
+      PANIC ("[ byte_to_sector ] no memory for malloc");
+
+  cache_read (inode->sector, disk_inode);
+
+  printf("inode-sector %d / inode-length %d / pos %d\n", inode->sector, disk_inode->length, pos);
+  if (pos < disk_inode->length)
+  {
+      int sector_idx = pos / DISK_SECTOR_SIZE;
+
+      if (sector_idx <= D_MAX)
+      {
+          // direct
+          sector = disk_inode->direct_sectors[sector_idx];
+      }
+      else if (sector_idx <= SIND_MAX)
+      {
+          // single indirect
+          // ex.
+          //    sector_idx = 124 (first sector in single_indirect sectors)
+          //    idx = 0
+          int idx = sector_idx - D_MAX - 1;
+          cache_read_at (disk_inode->sind_sector, &sector, idx * sizeof (disk_sector_t), sizeof (sector));
+      }
+      else if (sector_idx <= DIND_MAX)
+      {
+          // double indirect
+          // ex.
+          //    sector_idx = 252 (first sector in double_indirect sectors)
+          //    sind_idx = 0
+          //    direct_idx = 0
+          int sind_idx = (sector_idx - SIND_MAX - 1) / SECTOR_PER_SINGLE;
+          int direct_idx = (sector_idx - SIND_MAX - 1) % SECTOR_PER_SINGLE;
+          
+          disk_sector_t sind_sector;
+          cache_read_at (disk_inode->dind_sector, &sind_sector, sind_idx * sizeof (disk_sector_t), sizeof (sind_sector));
+          cache_read_at (sind_sector, &sector, direct_idx * sizeof (disk_sector_t), sizeof (sector));
+      }
+      else
+      {
+          PANIC ("[ byte_to_sector ] Too big pos %d == index %d sector", pos, sector_idx);
+      }
+  }
+
+  free (disk_inode);
+  return sector;
 }
 
 /* List of open inodes, so that opening a single inode twice
@@ -68,6 +141,22 @@ inode_init (void)
   list_init (&open_inodes);
 }
 
+bool
+alloc_single_indirect (disk_sector_t *sector, int *sectors)
+{
+    if (!free_map_allocate (1, sector))
+        return false;
+
+    disk_sector_t *buf = (disk_sector_t *) malloc (DISK_SECTOR_SIZE);
+    if (buf == NULL)
+        PANIC ("No space for malloc");
+    
+    int i;
+    for (i = 0; i < SECTOR_PER_SINGLE; ++i)
+        buf[i] = NONE;
+    
+    while (next_
+}
 /* Initializes an inode with LENGTH bytes of data and
    writes the new inode to sector SECTOR on the file system
    disk.
@@ -89,23 +178,86 @@ inode_create (disk_sector_t sector, off_t length)
   if (disk_inode != NULL)
     {
       size_t sectors = bytes_to_sectors (length);
+      int sectors_idx = sectors - 1;
+
+      // Initialization
       disk_inode->length = length;
       disk_inode->magic = INODE_MAGIC;
-      if (free_map_allocate (sectors, &disk_inode->start))
-        {
-          //disk_write (filesys_disk, sector, disk_inode);
-          cache_write (sector, disk_inode);
-          if (sectors > 0) 
-            {
-              static char zeros[DISK_SECTOR_SIZE];
-              size_t i;
-              
-              for (i = 0; i < sectors; i++) 
-                //disk_write (filesys_disk, disk_inode->start + i, zeros);
-                cache_write (disk_inode->start + i, zeros);
-            }
-          success = true; 
-        } 
+
+      int i;
+      for (i = 0; i < DIRECT_NUM, ++i)
+      {
+          disk_inode->direct_sectors[i] = NONE;
+      }
+      disk_inode->sind_sector = NONE;
+      disk_inode->dind_sector = NONE;
+      // End of Initialization
+
+      // TODO: set all details of inode_disk, and write it on the given sector
+      int next_sidx = 0; // next sector index
+      
+      // directs
+      while (next_sidx <= D_MAX)
+      {
+          if (sectors > 0)
+          {
+              if (!free_map_allocate (1, &disk_inode->direct_sectors[next_sidx]))
+              {
+                  goto rollback;
+              }
+              cache_write (disk_inode->direct_sectors[next_sidx], zeros);
+              sectors -= 1;
+          }
+          next_sidx += 1;
+      }
+
+      // single indirect
+      if (sectors > 0)
+      {
+          if (!free_map_allocate (1, &disk_inode->sind_sector))
+              goto rollback;
+
+          disk_sector_t *buf = (disk_sector_t *) malloc (DISK_SECTOR_SIZE);
+          if (buf == NULL)
+              PANIC ("No space for malloc");
+          for (i = 0; i < SECTOR_PER_SINGLE; ++i)
+              buf[i] = NONE;
+
+          //while (next_sidx <= SIND_MAX)
+          for (i = 0; i < SECTOR_PER_SINGLE; ++i)
+          {
+              //int single_idx = next_sidx - D_MAX - 1;
+              if (sectors > 0)
+              {
+                  //if (!free_map_allocate (1, &buf[single_idx]))
+                  if (!free_map_allocate (1, &buf[i]))
+                  {
+                      free (buf);
+                      goto rollback;
+                  }
+                  //cache_write (buf[single_idx], zeros);
+                  cache_write (buf[i], zeros);
+                  sectors -= 1;
+              }
+              next_sidx += 1;
+          }
+          cache_write (disk_inode->sind_sector, buf);
+          free (buf);
+      }
+
+      // double indirect
+      if (sectors > 0)
+      {
+          asdf
+      }
+
+
+
+rollback:
+      if (!success)
+      {
+          // free allocated sectors
+      }
       free (disk_inode);
     }
   return success;
