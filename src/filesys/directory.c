@@ -6,13 +6,6 @@
 #include "filesys/inode.h"
 #include "threads/malloc.h"
 
-/* A directory. */
-struct dir 
-  {
-    struct inode *inode;                /* Backing store. */
-    off_t pos;                          /* Current position. */
-  };
-
 /* A single directory entry. */
 struct dir_entry 
   {
@@ -26,7 +19,22 @@ struct dir_entry
 bool
 dir_create (disk_sector_t sector, size_t entry_cnt) 
 {
-  return inode_create (sector, entry_cnt * sizeof (struct dir_entry));
+  bool success = inode_create (sector, entry_cnt * sizeof (struct dir_entry), DIR_T);
+  if (success && sector == ROOT_DIR_SECTOR)
+  {
+      struct dir_entry e;
+      e.inode_sector = sector;
+      e.in_use = true;
+
+      // add . == root in root directory
+      e.name = ".";
+      cache_write_at (sector, &e, 0, sizeof e);
+
+      // add .. == root in root directory
+      e.name = "..";
+      cache_write_at (sector, &e, sizeof e, sizeof e);
+  }
+  return success;
 }
 
 /* Opens and returns the directory for the given INODE, of which
@@ -123,13 +131,138 @@ dir_lookup (const struct dir *dir, const char *name,
 
   ASSERT (dir != NULL);
   ASSERT (name != NULL);
-
-  if (lookup (dir, name, &e, NULL))
+/*
+  bool found = lookup (dir, name, &e, NULL);
+  bool success = found;
+  if (found && inode != NULL)
+  {
+      *inode = inode_open (e.inode_sector);
+      success = (*inode != NULL);
+  }
+  else if (!found && inode != NULL)
+  {
+      *inode = NULL;
+      success = false;
+  }
+*/
+  if (!strcmp (name, "/"))
+    *inode = inode_open (ROOT_DIR_SECTOR);
+  else if (lookup (dir, name, &e, NULL))
     *inode = inode_open (e.inode_sector);
   else
     *inode = NULL;
 
   return *inode != NULL;
+}
+
+/* Parse the given PATH under CWD given by a caller,
+ * and set appropriate DIR and FILENAME (among PATH) given by a caller.
+ * A caller should close DIR. */
+bool
+dir_parse (struct dir *cwd, const char *path, struct dir **dir, const char **filename)
+{
+    ASSERT (dir == NULL && filename == NULL && cwd != NULL);
+    if (path == NULL || *path == '\0')
+        return false;
+
+    char *cursor = path;
+    bool abs_path = false;
+
+    while (*cursor == '/')
+    {
+        abs_path = true;
+        cursor += 1;
+    }
+
+    if (*cursor == '\0')
+    {
+        // path = "" or "/////"
+        if (!abs_path)
+        {
+            // path = ""
+            return false;
+        }
+        else
+        {
+            // path = "/////"
+            *dir = dir_open_root ();
+            *filename = ".";
+            return true;
+        }
+    }
+
+    // path = "////asdf~" or "asdf~"
+
+    if (abs_path)
+        cwd = dir_open_root ();
+    else
+        cwd = dir_reopen (cwd);
+
+    // cwd should be closed later
+
+    char *name_path = cursor;
+    while (*cursor != '\0' && *cursor != '/')
+    {
+        cursor += 1;
+    }
+
+    if (*cursor == '\0')
+    {
+        // name_path = "asdf\0"
+        *dir = cwd;
+        *filename = name_path;
+        return true;
+    }
+
+    // name_path = "asdf/~" or "asdf////~"
+    char *dir_name = (char *) malloc (NAME_MAX + 1);
+    strlcpy (dir_name, name_path, NAME_MAX + 1);
+    *strchr(dir_name, '/') = '\0';
+    
+    // dir_name = "asdf\0~" or "asdf\0///~"
+    while (*cursor == '/')
+    {
+        cursor += 1;
+    }
+
+    if (*cursor == '\0')
+    {
+        // name_path = "asdf/\0" or "asdf////\0"
+        // => disallow (only allowed is '/')
+        free (dir_name);
+        dir_close (cwd);
+        return false;
+    }
+    else
+    {
+        // name_path = "asdf/as~" or "asdf///as~"
+        struct inode *inode;
+        if (!dir_lookup (cwd, dir_name, &inode))
+        {
+            // non-exist directory name
+            free (dir_name);
+            dir_close (cwd);
+            return false;
+        }
+
+        free (dir_name);
+        dir_close (cwd);
+
+        ASSERT (inode != NULL);
+
+        // found inode should be directory inode
+        if (!inode_is_dir (inode))
+        {
+            inode_close (inode);
+            return false;
+        }
+
+        // found inode is directory!
+        struct dir *sub_cwd = dir_open (inode);
+        bool success = dir_parse (sub_cwd, cursor, dir, filename);
+        dir_close (sub_cwd);
+        return success;
+    }
 }
 
 /* Adds a file named NAME to DIR, which must not already contain a
@@ -149,7 +282,7 @@ dir_add (struct dir *dir, const char *name, disk_sector_t inode_sector)
   ASSERT (name != NULL);
 
   /* Check NAME for validity. */
-  if (*name == '\0' || strlen (name) > NAME_MAX)
+  if (*name == '\0' || strlen (name) > NAME_MAX || strchr (name, '/') != NULL)
     return false;
 
   /* Check that NAME is not in use. */

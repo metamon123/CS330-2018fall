@@ -49,24 +49,49 @@ filesys_done (void)
 
   free_map_close ();
 }
-
+
 /* Creates a file named NAME with the given INITIAL_SIZE.
    Returns true if successful, false otherwise.
    Fails if a file named NAME already exists,
    or if internal memory allocation fails. */
 bool
-filesys_create (const char *name, off_t initial_size) 
+filesys_create (const char *path, off_t initial_size, ftype type) 
 {
+  // TODO: parse path => (dir, filename)
+  struct thread *cur = thread_current ();
+  struct dir *cwd = cur->cwd != NULL ? dir_reopen (cur->cwd) : dir_open_root ();
   disk_sector_t inode_sector = 0;
-  struct dir *dir = dir_open_root ();
+  struct dir *dir = NULL;
+  char *name = NULL;
+  /*
   bool success = (dir != NULL
                   && free_map_allocate (1, &inode_sector)
                   && inode_create (inode_sector, initial_size)
                   && dir_add (dir, name, inode_sector));
-  if (!success && inode_sector != 0) 
+  */
+  bool success = (dir_parse (cwd, path, &dir, &name)
+                  && free_map_allocate (1, &inode_sector)
+                  && inode_create (inode_sector, initial_size, type)
+                  && dir_add (dir, name, inode_sector));
+  if (!success && inode_sector != 0)
+    // should release all sector in inode_sector... (directs, sind, dind, ...)
     free_map_release (inode_sector, 1);
-  dir_close (dir);
-
+  if (success && type == DIR_T)
+  {
+      // add . and ..
+      struct inode *inode;
+      if (!dir_lookup (dir, name, &inode))
+          PANIC ("[ filesys_create () ] Directory creation failed\n");
+      
+      struct dir *sub_dir = dir_open (inode);
+      if (!dir_add (sub_dir, ".", inode_sector)
+          || dir_add (sub_dir, "..", inode_get_inumber (dir_get_inode (dir)))
+          PANIC ("[ filesys_create () ] creating . and .. failed");
+      dir_close (sub_dir);
+  }
+  if (dir != NULL)
+    dir_close (dir);
+  dir_close (cwd);
   return success;
 }
 
@@ -76,11 +101,24 @@ filesys_create (const char *name, off_t initial_size)
    Fails if no file named NAME exists,
    or if an internal memory allocation fails. */
 struct file *
-filesys_open (const char *name)
+filesys_open (const char *path)
 {
-  struct dir *dir = dir_open_root ();
-  struct inode *inode = NULL;
+  struct thread *cur = thread_current ();
+  struct dir *cwd = cur->cwd != NULL ? dir_reopen (cur->cwd) : dir_open_root ();
+  struct dir *dir = NULL;
+  char *name = NULL; 
 
+  // TODO: parse name => (dir, filename)
+  if (!dir_parse (cwd, path, &dir, &name))
+  {
+      dir_close (cwd);
+      return NULL;
+  }
+  dir_close (cwd);
+
+  ASSERT (dir != NULL);
+
+  struct inode *inode = NULL;
   if (dir != NULL)
     dir_lookup (dir, name, &inode);
   dir_close (dir);
@@ -95,13 +133,33 @@ filesys_open (const char *name)
 bool
 filesys_remove (const char *name) 
 {
+  struct thread *cur = thread_current ();
+  struct dir *cwd = cur->cwd != NULL ? dir_reopen (cur->cwd) : dir_open_root ();
+  struct dir *dir = NULL;
+  char *name = NULL; 
+
+  // TODO: parse name => (dir, filename)
+  if (!dir_parse (cwd, path, &dir, &name))
+  {
+      dir_close (cwd);
+      return NULL;
+  }
+  dir_close (cwd);
+  ASSERT (dir != NULL);
+
+  // TODO: parse name => (dir, filename)
+  /*
   struct dir *dir = dir_open_root ();
   bool success = dir != NULL && dir_remove (dir, name);
   dir_close (dir); 
+  */
+ 
+  bool success = dir_remove (dir, name);
+  dir_close (dir);
 
   return success;
 }
-
+
 /* Formats the file system. */
 static void
 do_format (void)

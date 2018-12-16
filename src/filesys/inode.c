@@ -33,7 +33,7 @@ static char zeros[DISK_SECTOR_SIZE];
    Must be exactly DISK_SECTOR_SIZE bytes long. */
 struct inode_disk
 {
-    uint32_t flag;
+    ftype type;
     off_t length;
     disk_sector_t direct_sectors[DIRECT_NUM]; // direct block pointers
     disk_sector_t sind_sector;          // single-indirect block pointer
@@ -58,6 +58,7 @@ struct inode
     int open_cnt;                       /* Number of openers. */
     bool removed;                       /* True if deleted, false otherwise. */
     int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
+    ftype type;
   };
 
 /* Returns the disk sector that contains byte offset POS within
@@ -311,7 +312,7 @@ inode_extend (struct inode *inode, off_t new_length)
    Returns true if successful.
    Returns false if memory or disk allocation fails. */
 bool
-inode_create (disk_sector_t sector, off_t length)
+inode_create (disk_sector_t sector, off_t length, ftype type)
 {
   struct inode_disk *disk_inode = NULL;
   bool success = false;
@@ -329,6 +330,7 @@ inode_create (disk_sector_t sector, off_t length)
       int sectors_idx = sectors - 1;
 
       // Initialization
+      disk_inode->type = type;
       disk_inode->length = length;
       disk_inode->magic = INODE_MAGIC;
 
@@ -436,6 +438,7 @@ inode_open (disk_sector_t sector)
   inode->open_cnt = 1;
   inode->deny_write_cnt = 0;
   inode->removed = false;
+  cache_read_at (inode->sector, &inode->type, 0, sizeof (ftype));
   return inode;
 }
 
@@ -683,4 +686,10 @@ inode_length (const struct inode *inode)
   off_t length;
   cache_read_at (inode->sector, &length, sizeof (uint32_t), sizeof (off_t));
   return length;
+}
+
+bool
+inode_is_dir (const struct inode *inode)
+{
+    return inode->type == DIR_T;
 }

@@ -11,6 +11,10 @@
 #include "vm/page.h"
 #endif
 
+#ifdef FILESYS
+#include "filesys/directory.h"
+#endif
+
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -129,6 +133,10 @@ struct thread
     bool in_syscall;
     void *sc_esp;
     struct list pin_list;
+#endif
+
+#ifdef FILESYS
+    struct dir *cwd;
 #endif
 
     struct hash_elem thread_hash_elem;

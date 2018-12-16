@@ -96,7 +96,7 @@ process_execute (const char *file_name)
 static void
 start_process (void *_aux)
 {
-  //printf ("starts tid %d\n", thread_current ()->tid);
+  struct thread *cur = thread_current ();
   void **aux = (void **)_aux;
   char *fn_copy = aux[0];
   struct semaphore *sema_startp = aux[1];
@@ -106,7 +106,7 @@ start_process (void *_aux)
   struct intr_frame if_;
   bool success;
 
-  thread_current ()->is_process = true;
+  cur->is_process = true;
 #ifdef VM
   spt_init ();
 #endif
@@ -125,6 +125,19 @@ start_process (void *_aux)
   }
 
   set_arguments (&if_.esp, fn_copy, init_filename_len);
+
+#ifdef FILESYS
+  ASSERT (cur->parent != NULL);
+  if (cur->parent->cwd == NULL)
+  {
+      // made by kernel thread => initial cwd = root dir
+      cur->cwd = dir_open_root ();
+  }
+  else
+  {
+      cur->cwd = dir_reopen (cur->parent->cwd);
+  }
+#endif
 
   *load_success = success;
   sema_up (sema_startp);
@@ -280,6 +293,9 @@ process_exit (void)
     file_close (fdelem->file);
     free (fdelem);
   }
+#ifdef FILESYS
+  dir_close (curr->cwd);
+#endif
   filesys_lock_release ();
 
   // For orphan processes

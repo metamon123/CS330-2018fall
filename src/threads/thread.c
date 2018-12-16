@@ -527,6 +527,9 @@ init_thread (struct thread *t, const char *name, int priority)
   t->sc_esp = NULL;
   list_init (&t->pin_list);
 #endif
+#ifdef FILESYS
+  t->cwd = NULL;
+#endif
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

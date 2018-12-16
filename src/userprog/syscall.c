@@ -538,6 +538,33 @@ _unmap (int mapid)
     free (mmelem);
 }
 
+bool
+_chdir (const char *dir)
+{
+    struct thread *cur = thread_current ();
+    // cur->cwd = 
+}
+
+bool
+_mkdir (const char *dir)
+{
+}
+
+bool
+_readdir (int fd, char *name)
+{
+}
+
+bool
+_isdir (int fd)
+{
+}
+
+bool
+_inumber (int fd)
+{
+}
+
 void
 syscall_init (void) 
 {
@@ -663,6 +690,32 @@ syscall_handler (struct intr_frame *f UNUSED)
         if (!check_uaddr (esp + 4, 4))
           break;
         _unmap (*(int *)(esp + 4));
+        bad_exit = false;
+        break;
+    case SYS_CHDIR:
+        if (!check_ubuf (esp + 4))
+          break;
+        f->eax = _chdir (*(char **)(esp + 4));
+        bad_exit = false;
+        break;
+    case SYS_MKDIR:
+        if (!check_ubuf (esp + 4))
+          break;
+        f->eax = _mkdir (*(char **)(esp + 4));
+        bad_exit = false;
+        break;
+    case SYS_READDIR:
+        break;
+    case SYS_ISDIR:
+        if (!check_uaddr (esp + 4, 4))
+          break;
+        f->eax = _isdir (*(int *)(esp + 4));
+        bad_exit = false;
+        break;
+    case SYS_INUMBER:
+        if (!check_uaddr (esp + 4, 4))
+          break;
+        f->eax = _inumber (*(int *)(esp + 4));
         bad_exit = false;
         break;
     default:
