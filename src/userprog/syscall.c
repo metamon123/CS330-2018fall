@@ -19,6 +19,10 @@
 #include "vm/page.h"
 #endif
 
+#ifdef FILESYS
+#include "filesys/inode.h"
+#endif
+
 static void syscall_handler (struct intr_frame *);
 
 /* Check whether user's address (address ~ address + size - 1) is valid.
@@ -197,7 +201,7 @@ _create (const char *filename, uint32_t size)
     if (success)
     {
         filesys_lock_acquire ();
-        result = filesys_create (filename, size);
+        result = filesys_create (filename, size, FILE_T);
         filesys_lock_release ();
 
         unpin_all ();
@@ -542,27 +546,32 @@ bool
 _chdir (const char *dir)
 {
     struct thread *cur = thread_current ();
-    // cur->cwd = 
+    // cur->cwd =
+    return false; 
 }
 
 bool
 _mkdir (const char *dir)
 {
+    return false;
 }
 
 bool
 _readdir (int fd, char *name)
 {
+    return false;
 }
 
 bool
 _isdir (int fd)
 {
+    return false;
 }
 
-bool
+int
 _inumber (int fd)
 {
+    return -1;
 }
 
 void

@@ -13,6 +13,7 @@
 
 #ifdef FILESYS
 #include "filesys/cache.h"
+#include "filesys/inode.h"
 #endif
 
 /* List files in the root directory. */
@@ -114,7 +115,7 @@ fsutil_put (char **argv)
     PANIC ("%s: invalid file size %d", file_name, size);
   
   /* Create destination file. */
-  if (!filesys_create (file_name, size))
+  if (!filesys_create (file_name, size, FILE_T))
     PANIC ("%s: create failed", file_name);
   dst = filesys_open (file_name);
   if (dst == NULL)

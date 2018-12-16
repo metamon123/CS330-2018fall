@@ -5,6 +5,7 @@
 #include "filesys/filesys.h"
 #include "filesys/inode.h"
 #include "threads/malloc.h"
+#include "filesys/cache.h"
 
 /* A single directory entry. */
 struct dir_entry 
@@ -27,11 +28,11 @@ dir_create (disk_sector_t sector, size_t entry_cnt)
       e.in_use = true;
 
       // add . == root in root directory
-      e.name = ".";
+      strlcpy (e.name, ".", NAME_MAX + 1) ;
       cache_write_at (sector, &e, 0, sizeof e);
 
       // add .. == root in root directory
-      e.name = "..";
+      strlcpy (e.name, "..", NAME_MAX + 1);
       cache_write_at (sector, &e, sizeof e, sizeof e);
   }
   return success;

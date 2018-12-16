@@ -9,6 +9,7 @@
 #include "devices/disk.h"
 
 #ifdef FILESYS
+#include "threads/thread.h"
 #include "filesys/cache.h"
 #endif
 
@@ -59,7 +60,7 @@ filesys_create (const char *path, off_t initial_size, ftype type)
 {
   // TODO: parse path => (dir, filename)
   struct thread *cur = thread_current ();
-  struct dir *cwd = cur->cwd != NULL ? dir_reopen (cur->cwd) : dir_open_root ();
+  struct dir *cwd = (cur->cwd != NULL) ? dir_reopen (cur->cwd) : dir_open_root ();
   disk_sector_t inode_sector = 0;
   struct dir *dir = NULL;
   char *name = NULL;
@@ -85,7 +86,7 @@ filesys_create (const char *path, off_t initial_size, ftype type)
       
       struct dir *sub_dir = dir_open (inode);
       if (!dir_add (sub_dir, ".", inode_sector)
-          || dir_add (sub_dir, "..", inode_get_inumber (dir_get_inode (dir)))
+          || dir_add (sub_dir, "..", inode_get_inumber (dir_get_inode (dir))))
           PANIC ("[ filesys_create () ] creating . and .. failed");
       dir_close (sub_dir);
   }
@@ -104,7 +105,7 @@ struct file *
 filesys_open (const char *path)
 {
   struct thread *cur = thread_current ();
-  struct dir *cwd = cur->cwd != NULL ? dir_reopen (cur->cwd) : dir_open_root ();
+  struct dir *cwd = (cur->cwd != NULL) ? dir_reopen (cur->cwd) : dir_open_root ();
   struct dir *dir = NULL;
   char *name = NULL; 
 
@@ -131,10 +132,10 @@ filesys_open (const char *path)
    Fails if no file named NAME exists,
    or if an internal memory allocation fails. */
 bool
-filesys_remove (const char *name) 
+filesys_remove (const char *path) 
 {
   struct thread *cur = thread_current ();
-  struct dir *cwd = cur->cwd != NULL ? dir_reopen (cur->cwd) : dir_open_root ();
+  struct dir *cwd = (cur->cwd != NULL) ? dir_reopen (cur->cwd) : dir_open_root ();
   struct dir *dir = NULL;
   char *name = NULL; 
 

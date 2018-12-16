@@ -7,7 +7,7 @@
 
 struct bitmap;
 
-typedef enum {FILE_T DIR_T, VOID_T} ftype;
+typedef enum {FILE_T, DIR_T, VOID_T} ftype;
 
 void inode_init (void);
 bool inode_create (disk_sector_t, off_t, ftype);
