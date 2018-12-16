@@ -78,11 +78,11 @@ filesys_create (const char *path, off_t initial_size, ftype type)
       // add . and ..
       struct inode *inode;
       if (!dir_lookup (dir, name, &inode))
-          PANIC ("[ filesys_create () ] Directory creation failed\n");
+        PANIC ("[ filesys_create () ] Directory creation failed\n");
       
       struct dir *sub_dir = dir_open (inode);
       if (!dir_add (sub_dir, ".", inode_sector)
-          || dir_add (sub_dir, "..", inode_get_inumber (dir_get_inode (dir))))
+          || !dir_add (sub_dir, "..", inode_get_inumber (dir_get_inode (dir))))
           PANIC ("[ filesys_create () ] creating . and .. failed");
       dir_close (sub_dir);
   }
