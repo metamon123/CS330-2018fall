@@ -49,17 +49,6 @@ bytes_to_sectors (off_t size)
   return DIV_ROUND_UP (size, DISK_SECTOR_SIZE);
 }
 
-/* In-memory inode. */
-/* On-disk inode + meta data needed in kernel */
-struct inode 
-  {
-    struct list_elem elem;              /* Element in inode list. */
-    disk_sector_t sector;               /* Sector number of disk location. */
-    int open_cnt;                       /* Number of openers. */
-    bool removed;                       /* True if deleted, false otherwise. */
-    int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
-    ftype type;
-  };
 
 /* Returns the disk sector that contains byte offset POS within
    INODE.
@@ -173,14 +162,16 @@ alloc_single_indirect (disk_sector_t *sector, int *sectors)
     return true;
 }
 
-static void
+static bool
 inode_extend (struct inode *inode, off_t new_length)
 {
     ASSERT (inode != NULL);
 
+    bool success = false;
+
     int i;
     off_t length = inode_length (inode);
-    if (length >= new_length) return;
+    if (length >= new_length) return success;
 
     struct inode_disk *disk_inode = (struct inode_disk *) malloc (DISK_SECTOR_SIZE);
     if (disk_inode == NULL)
@@ -200,7 +191,8 @@ inode_extend (struct inode *inode, off_t new_length)
     while (next_idx >= 0 && next_idx <= D_MAX && sectors > 0)//next_idx <= goal_idx)//sectors > 0)
     {
         if (!free_map_allocate (1, &disk_inode->direct_sectors[next_idx]))
-            PANIC ("free_map_allocate failed");
+            goto done;//PANIC ("free_map_allocate failed");
+            
         cache_write (disk_inode->direct_sectors[next_idx], zeros);
         next_idx += 1;
         sectors -= 1;
@@ -217,7 +209,10 @@ inode_extend (struct inode *inode, off_t new_length)
         if (disk_inode->sind_sector == NONE)
         {
             if (!free_map_allocate (1, &disk_inode->sind_sector))
-                PANIC ("free_map_allocate failed");
+            {
+                free (buf);
+                goto done; //PANIC ("free_map_allocate failed");
+            }
             for (i = 0; i < SECTOR_PER_SINGLE; ++i)
                 buf[i] = NONE;
         }
@@ -230,8 +225,8 @@ inode_extend (struct inode *inode, off_t new_length)
                 break;
             if (!free_map_allocate (1, &buf[i]))
             {
-                //free (buf);
-                PANIC ("free_map_allocate failed");
+                free (buf);
+                goto done; //PANIC ("free_map_allocate failed");
             }
             cache_write (buf[i], zeros);
             next_idx += 1;
@@ -251,7 +246,10 @@ inode_extend (struct inode *inode, off_t new_length)
         if (disk_inode->dind_sector == NONE)
         {
             if (!free_map_allocate (1, &disk_inode->dind_sector))
-                PANIC ("free_map_allocate failed");
+            {
+                free (out_buf);
+                goto done; // PANIC ("free_map_allocate failed");
+            }
             for (i = 0; i < SECTOR_PER_SINGLE; ++i)
                 out_buf[i] = NONE;
         }
@@ -269,7 +267,11 @@ inode_extend (struct inode *inode, off_t new_length)
         if (out_buf[sind_idx] == NONE)
         {
             if (!free_map_allocate (1, &out_buf[sind_idx]))
-                PANIC ("free_map_allocate failed");
+            {
+                free (out_buf);
+                free (in_buf);
+                goto done; //PANIC ("free_map_allocate failed");
+            }
             for (i = 0; i < SECTOR_PER_SINGLE; ++i)
                 in_buf[i] = NONE;
         }
@@ -281,7 +283,11 @@ inode_extend (struct inode *inode, off_t new_length)
             if (sectors <= 0)
                 break;
             if (!free_map_allocate (1, &in_buf[i]))
-                PANIC ("free_map_allocate failed");
+            {
+                free (out_buf);
+                free (in_buf);
+                goto done; //PANIC ("free_map_allocate failed");
+            }
             cache_write (in_buf[i], zeros);
             //next_idx += 1; // will not be used anymore
             sectors -= 1;
@@ -295,15 +301,22 @@ inode_extend (struct inode *inode, off_t new_length)
             if (sectors <= 0)
                 break;
             if (!alloc_single_indirect (&out_buf[i], &sectors))
-                PANIC ("free_map_allocate failed");
+            {
+                free (out_buf);
+                free (in_buf);
+                goto done; //PANIC ("free_map_allocate failed");
+            }
         }
 
         cache_write (disk_inode->dind_sector, out_buf);
         free (out_buf);
     }
 
+    success = true;
+done:
     cache_write (inode->sector, disk_inode);
     free (disk_inode);
+    return success;
 }
 
 /* Initializes an inode with LENGTH bytes of data and
@@ -400,7 +413,7 @@ rollback:
       if (!success)
       {
           // free allocated sectors?
-          PANIC ("inode_create failed");
+          //PANIC ("inode_create failed");
       }
       cache_write (sector, disk_inode);
       free (disk_inode);
@@ -625,7 +638,8 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
   if (offset + size > length)
   {
       //printf ("length : %d / offset : %d => extending inode\n", length, offset);
-      inode_extend (inode, offset + size);
+      if (!inode_extend (inode, offset + size))
+          return 0;
       //printf ("new length : %d\n", inode_length (inode));
   }
   while (size > 0) 

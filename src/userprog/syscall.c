@@ -593,6 +593,34 @@ _mkdir (const char *dir)
 bool
 _readdir (int fd, char *name)
 {
+    bool result;
+    bool success = preload (name, strlen (name) + 1);
+    if (success)
+    {
+        bool isdir = false;
+        filesys_lock_acquire ();
+        struct file *file = fd2file (fd);
+        isdir = file_is_dir (file);
+        filesys_lock_release ();
+
+        if (isdir)
+        {
+            filesys_lock_acquire ();
+            result = dir_readdir ((struct dir *)file, name);
+            filesys_lock_release ();
+        }
+
+        unpin_all ();
+        return result;
+    }
+    else
+    {
+        struct thread *cur = thread_current ();
+        cur->in_syscall = false;
+        cur->sc_esp = NULL;
+        _exit (-1);
+    }
+
     return false;
 }
 
@@ -758,6 +786,10 @@ syscall_handler (struct intr_frame *f UNUSED)
         bad_exit = false;
         break;
     case SYS_READDIR:
+        if (!check_uaddr (esp + 4, 4) || !check_ubuf (esp + 8))
+          break;
+        f->eax = _readdir (*(int *)(esp + 4), *(char **)(esp + 8));
+        bad_exit = false;
         break;
     case SYS_ISDIR:
         if (!check_uaddr (esp + 4, 4))

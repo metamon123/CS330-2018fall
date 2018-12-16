@@ -63,9 +63,14 @@ filesys_create (const char *path, off_t initial_size, ftype type)
   disk_sector_t inode_sector = 0;
   struct dir *dir = NULL;
   char *name = NULL;
- 
-  bool success = (dir_parse (cwd, path, &dir, &name)
-                  && free_map_allocate (1, &inode_sector)
+
+  // if path is not valid && target directory is already removed
+  if (!dir_parse (cwd, path, &dir, &name) || dir->inode->removed)
+  {
+      goto done;
+  }
+
+  bool success = (free_map_allocate (1, &inode_sector)
                   && inode_create (inode_sector, initial_size, type)
                   && dir_add (dir, name, inode_sector));
 
@@ -86,6 +91,7 @@ filesys_create (const char *path, off_t initial_size, ftype type)
           PANIC ("[ filesys_create () ] creating . and .. failed");
       dir_close (sub_dir);
   }
+done:
   if (dir != NULL)
     dir_close (dir);
   dir_close (cwd);
@@ -105,12 +111,21 @@ filesys_open (const char *path)
   struct dir *dir = NULL;
   char *name = NULL; 
 
-  // TODO: parse name => (dir, filename)
   if (!dir_parse (cwd, path, &dir, &name))
   {
+      // if path is not valid
       dir_close (cwd);
       return NULL;
   }
+
+  if (dir->inode->removed)
+  {
+      // if target directory is already removed
+      dir_close (cwd);
+      dir_close (dir);
+      return NULL;
+  }
+
   dir_close (cwd);
 
   ASSERT (dir != NULL);

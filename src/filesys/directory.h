@@ -18,6 +18,7 @@ struct inode;
 struct dir {
     struct inode *inode; /* Backing store. */
     off_t pos;           /* Current position. */
+    bool NOT_USED;
 };
 
 /* Opening and closing directories. */

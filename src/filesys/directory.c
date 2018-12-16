@@ -334,8 +334,25 @@ dir_remove (struct dir *dir, const char *name)
 
   if (inode_is_dir (inode))
   {
-      // TODO: check whether target directory is empty
+      struct dir *target_dir = dir_open (inode);
+
+      // check whether target directory is empty
+      char *any_name = (char *) malloc (NAME_MAX + 1);
+      if (dir_readdir (target_dir, any_name))
+      {
+          // if not empty (excluding . & ..)
+          free (any_name);
+          dir_close (target_dir);
+          goto done;
+      }
+      free (any_name);
+
+      // check whether target directory is opened
+
+      dir_close (target_dir);
   }
+
+  
   /* Erase directory entry. */
   e.in_use = false;
   if (inode_write_at (dir->inode, &e, sizeof e, ofs) != sizeof e) 
@@ -361,7 +378,7 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
   while (inode_read_at (dir->inode, &e, sizeof e, dir->pos) == sizeof e) 
     {
       dir->pos += sizeof e;
-      if (e.in_use)
+      if (e.in_use && strcmp (e.name, ".") && strcmp (e.name, ".."))
         {
           strlcpy (name, e.name, NAME_MAX + 1);
           return true;
