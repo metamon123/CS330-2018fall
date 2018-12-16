@@ -18,6 +18,12 @@ file_is_dir (struct file *file)
     return inode_is_dir (file->inode);
 }
 
+int
+file_inumber (struct file *file)
+{
+    return inode_get_inumber (file->inode);
+}
+
 /* Opens a file for the given INODE, of which it takes ownership,
    and returns the new file.  Returns a null pointer if an
    allocation fails or if INODE is null. */

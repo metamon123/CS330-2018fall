@@ -36,4 +36,5 @@ bool dir_readdir (struct dir *, char name[NAME_MAX + 1]);
 
 /* Path control */
 bool dir_parse (struct dir *, const char *, struct dir **, const char **);
+bool dir_chdir (const char *);
 #endif /* filesys/directory.h */

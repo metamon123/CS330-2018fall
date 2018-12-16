@@ -370,6 +370,27 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
 }
 
 bool
-dir_chdir (const char *dir)
+dir_chdir (const char *dir_path)
 {
+    struct thread *cur = thread_current ();
+    ASSERT (cur->cwd != NULL); // chdir can called only by syscall
+
+    struct dir *dir = NULL;
+    char *name = NULL;
+
+    if (!dir_parse (cur->cwd, dir_path, &dir, &name))
+    {
+        return NULL;
+    }
+
+    ASSERT (dir != NULL);
+
+    struct inode *inode = NULL;
+    bool success = !dir_lookup (dir, name, &inode)
+    dir_close (dir);
+
+    if (success)
+        cur->cwd = dir_open (inode);
+
+    return success;
 }

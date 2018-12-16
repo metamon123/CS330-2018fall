@@ -28,4 +28,5 @@ off_t file_tell (struct file *);
 off_t file_length (struct file *);
 
 bool file_is_dir (struct file *);
+int file_inumber (struct file *);
 #endif /* filesys/file.h */

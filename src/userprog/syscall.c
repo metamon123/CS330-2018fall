@@ -547,8 +547,24 @@ _unmap (int mapid)
 bool
 _chdir (const char *dir)
 {
-    // cur->cwd =
-    return false; 
+    bool result;
+    bool success = preload (dir, strlen (dir) + 1);
+    if (success)
+    {
+        filesys_lock_acquire ();
+        result = dir_chdir (dir);
+        filesys_lock_release ();
+
+        unpin_all ();
+        return result;
+    }
+    else
+    {
+        struct thread *cur = thread_current ();
+        cur->in_syscall = false;
+        cur->sc_esp = NULL;
+        _exit (-1);
+    }
 }
 
 bool
@@ -583,13 +599,23 @@ _readdir (int fd, char *name)
 bool
 _isdir (int fd)
 {
-    return false;
+    bool result;
+    filesys_lock_acquire ();
+    struct file *file = fd2file (fd);
+    result = file_is_dir (file);
+    filesys_lock_release ();
+    return result;
 }
 
 int
 _inumber (int fd)
 {
-    return -1;
+    int inum;
+    filesys_lock_acquire ();
+    struct file *file = fd2file (fd);
+    inum = file_inumber (file);
+    filesys_lock_release ();
+    return inum;
 }
 
 void
