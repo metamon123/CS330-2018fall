@@ -189,12 +189,13 @@ inode_extend (struct inode *inode, off_t new_length)
     disk_inode->length = new_length;
 
     // sector indexes
-    int next_idx = bytes_to_sectors (length) + 1;
+    int next_idx = bytes_to_sectors (length);
     int goal_idx = bytes_to_sectors (new_length);
 
     // how many sectors should be allocated additionally?
     int sectors = goal_idx - next_idx + 1;
 
+    //printf ("next_idx : %d / goal_idx : %d / sectors : %d\n", next_idx, goal_idx, sectors);
     while (next_idx >= 0 && next_idx <= D_MAX && sectors > 0)//next_idx <= goal_idx)//sectors > 0)
     {
         if (!free_map_allocate (1, &disk_inode->direct_sectors[next_idx]))
@@ -221,7 +222,7 @@ inode_extend (struct inode *inode, off_t new_length)
         }
         else
             cache_read (disk_inode->sind_sector, buf);
-
+        
         for (i = next_idx - D_MAX - 1; i < SECTOR_PER_SINGLE; ++i)
         {
             if (sectors <= 0)
@@ -340,7 +341,7 @@ inode_create (disk_sector_t sector, off_t length)
       disk_inode->dind_sector = NONE;
       // End of Initialization
 
-      // TODO: set all details of inode_disk, and write it on the given sector
+      // Set all details of inode_disk, and write it on the given sector
       
       // directs
       for (i = 0; i < DIRECT_NUM; ++i)
@@ -435,7 +436,6 @@ inode_open (disk_sector_t sector)
   inode->open_cnt = 1;
   inode->deny_write_cnt = 0;
   inode->removed = false;
-  //cache_read (inode->sector, &inode->data);
   return inode;
 }
 
@@ -565,6 +565,8 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
     {
       /* Disk sector to read, starting byte offset within sector. */
       disk_sector_t sector_idx = byte_to_sector (inode, offset);
+      if (sector_idx == NONE)
+          break; // read beyond EOF
       int sector_ofs = offset % DISK_SECTOR_SIZE;
 
       /* Bytes left in inode, bytes left in sector, lesser of the two. */
@@ -613,6 +615,13 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
   if (inode->deny_write_cnt)
     return 0;
 
+  off_t length = inode_length (inode);
+  if (offset + size > length)
+  {
+      //printf ("length : %d / offset : %d => extending inode\n", length, offset);
+      inode_extend (inode, offset + size);
+      //printf ("new length : %d\n", inode_length (inode));
+  }
   while (size > 0) 
     {
       /* Sector to write, starting byte offset within sector. */
