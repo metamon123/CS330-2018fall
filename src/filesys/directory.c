@@ -5,6 +5,7 @@
 #include "filesys/filesys.h"
 #include "filesys/inode.h"
 #include "threads/malloc.h"
+#include "threads/thread.h"
 #include "filesys/cache.h"
 
 /* A single directory entry. */
@@ -386,7 +387,7 @@ dir_chdir (const char *dir_path)
     ASSERT (dir != NULL);
 
     struct inode *inode = NULL;
-    bool success = !dir_lookup (dir, name, &inode)
+    bool success = dir_lookup (dir, name, &inode);
     dir_close (dir);
 
     if (success)
