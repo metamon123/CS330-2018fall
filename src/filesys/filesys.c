@@ -58,25 +58,21 @@ filesys_done (void)
 bool
 filesys_create (const char *path, off_t initial_size, ftype type) 
 {
-  // TODO: parse path => (dir, filename)
   struct thread *cur = thread_current ();
   struct dir *cwd = (cur->cwd != NULL) ? dir_reopen (cur->cwd) : dir_open_root ();
   disk_sector_t inode_sector = 0;
   struct dir *dir = NULL;
   char *name = NULL;
-  /*
-  bool success = (dir != NULL
-                  && free_map_allocate (1, &inode_sector)
-                  && inode_create (inode_sector, initial_size)
-                  && dir_add (dir, name, inode_sector));
-  */
+ 
   bool success = (dir_parse (cwd, path, &dir, &name)
                   && free_map_allocate (1, &inode_sector)
                   && inode_create (inode_sector, initial_size, type)
                   && dir_add (dir, name, inode_sector));
+
   if (!success && inode_sector != 0)
     // should release all sector in inode_sector... (directs, sind, dind, ...)
     free_map_release (inode_sector, 1);
+
   if (success && type == DIR_T)
   {
       // add . and ..

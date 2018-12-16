@@ -559,7 +559,7 @@ _mkdir (const char *dir)
     if (success)
     {
         filesys_lock_acquire ();
-        result = filesys_create (dir, size, DIR_T);
+        result = filesys_create (dir, 0, DIR_T);
         filesys_lock_release ();
 
         unpin_all ();
