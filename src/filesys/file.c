@@ -11,6 +11,12 @@ struct file
     bool deny_write;            /* Has file_deny_write() been called? */
   };
 
+bool
+file_is_dir (struct file *file)
+{
+    return inode_is_dir (file->inode);
+}
+
 /* Opens a file for the given INODE, of which it takes ownership,
    and returns the new file.  Returns a null pointer if an
    allocation fails or if INODE is null. */

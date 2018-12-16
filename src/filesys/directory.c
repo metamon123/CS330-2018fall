@@ -331,6 +331,10 @@ dir_remove (struct dir *dir, const char *name)
   if (inode == NULL)
     goto done;
 
+  if (inode_is_dir (inode))
+  {
+      // TODO: check whether target directory is empty
+  }
   /* Erase directory entry. */
   e.in_use = false;
   if (inode_write_at (dir->inode, &e, sizeof e, ofs) != sizeof e) 
@@ -363,4 +367,9 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
         } 
     }
   return false;
+}
+
+bool
+dir_chdir (const char *dir)
+{
 }

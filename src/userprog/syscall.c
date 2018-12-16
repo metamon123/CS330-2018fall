@@ -321,7 +321,7 @@ _read (int fd, const void *buffer, uint32_t size)
 
     filesys_lock_acquire ();
     struct file *file = fd2file (fd);
-    if (file == NULL)
+    if (file == NULL || file_is_dir (file))
     {
       filesys_lock_release ();
       unpin_all ();
@@ -355,7 +355,7 @@ _write (int fd, const void *buffer, uint32_t size)
 
     filesys_lock_acquire ();
     struct file *file = fd2file (fd);
-    if (file == NULL)
+    if (file == NULL || file_is_dir (file))
     {
       filesys_lock_release ();
       unpin_all ();
@@ -373,7 +373,9 @@ _seek (int fd, uint32_t pos)
 {
     // no need for preloading
     filesys_lock_acquire ();
-    file_seek (fd2file (fd), pos);
+    struct file *file = fd2file (fd);
+    if (!file_is_dir (file))
+        file_seek (file, pos);
     filesys_lock_release ();
 }
 
@@ -545,7 +547,6 @@ _unmap (int mapid)
 bool
 _chdir (const char *dir)
 {
-    struct thread *cur = thread_current ();
     // cur->cwd =
     return false; 
 }
@@ -553,7 +554,24 @@ _chdir (const char *dir)
 bool
 _mkdir (const char *dir)
 {
-    return false;
+    bool result;
+    bool success = preload (dir, strlen (dir) + 1);
+    if (success)
+    {
+        filesys_lock_acquire ();
+        result = filesys_create (dir, size, DIR_T);
+        filesys_lock_release ();
+
+        unpin_all ();
+        return result;
+    }
+    else
+    {
+        struct thread *cur = thread_current ();
+        cur->in_syscall = false;
+        cur->sc_esp = NULL;
+        _exit (-1);
+    }
 }
 
 bool

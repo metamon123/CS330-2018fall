@@ -5,6 +5,8 @@
 
 struct inode;
 
+bool file_is_dir (struct file *);
+
 /* Opening and closing files. */
 struct file *file_open (struct inode *);
 struct file *file_reopen (struct file *);

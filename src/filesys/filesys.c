@@ -148,12 +148,7 @@ filesys_remove (const char *path)
   dir_close (cwd);
   ASSERT (dir != NULL);
 
-  // TODO: parse name => (dir, filename)
-  /*
-  struct dir *dir = dir_open_root ();
-  bool success = dir != NULL && dir_remove (dir, name);
-  dir_close (dir); 
-  */
+  // directory => remove only when it's empty => done in dir_remove
  
   bool success = dir_remove (dir, name);
   dir_close (dir);
