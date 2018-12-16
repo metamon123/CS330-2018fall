@@ -314,6 +314,7 @@ inode_extend (struct inode *inode, off_t new_length)
 bool
 inode_create (disk_sector_t sector, off_t length, ftype type)
 {
+  //printf ("inode_create - sector : %d, length : %d\n", sector, length);
   struct inode_disk *disk_inode = NULL;
   bool success = false;
 
@@ -332,6 +333,7 @@ inode_create (disk_sector_t sector, off_t length, ftype type)
       // Initialization
       disk_inode->type = type;
       disk_inode->length = length;
+      //printf ("inode_create - sector : %d, length set\n", sector);
       disk_inode->magic = INODE_MAGIC;
 
       int i;
@@ -618,6 +620,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
   if (inode->deny_write_cnt)
     return 0;
 
+  //printf ("inode_write_at - inode->sector : %d\n", inode->sector);
   off_t length = inode_length (inode);
   if (offset + size > length)
   {
@@ -631,6 +634,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
       disk_sector_t sector_idx = byte_to_sector (inode, offset);
       int sector_ofs = offset % DISK_SECTOR_SIZE;
 
+      //printf ("inode_write_at - writing sector_idx : %d\n", sector_idx);
       /* Bytes left in inode, bytes left in sector, lesser of the two. */
       off_t inode_left = inode_length (inode) - offset;
       int sector_left = DISK_SECTOR_SIZE - sector_ofs;
@@ -684,7 +688,7 @@ off_t
 inode_length (const struct inode *inode)
 {
   off_t length;
-  cache_read_at (inode->sector, &length, sizeof (uint32_t), sizeof (off_t));
+  cache_read_at (inode->sector, &length, sizeof (ftype), sizeof (off_t));
   return length;
 }
 

@@ -23,17 +23,11 @@ dir_create (disk_sector_t sector, size_t entry_cnt)
   bool success = inode_create (sector, entry_cnt * sizeof (struct dir_entry), DIR_T);
   if (success && sector == ROOT_DIR_SECTOR)
   {
-      struct dir_entry e;
-      e.inode_sector = sector;
-      e.in_use = true;
+      struct dir *root = dir_open_root ();
 
-      // add . == root in root directory
-      strlcpy (e.name, ".", NAME_MAX + 1) ;
-      cache_write_at (sector, &e, 0, sizeof e);
-
-      // add .. == root in root directory
-      strlcpy (e.name, "..", NAME_MAX + 1);
-      cache_write_at (sector, &e, sizeof e, sizeof e);
+      // add . & .. in root directory
+      dir_add (root, ".", ROOT_DIR_SECTOR);
+      dir_add (root, "..", ROOT_DIR_SECTOR);
   }
   return success;
 }
@@ -162,7 +156,8 @@ dir_lookup (const struct dir *dir, const char *name,
 bool
 dir_parse (struct dir *cwd, const char *path, struct dir **dir, const char **filename)
 {
-    ASSERT (dir == NULL && filename == NULL && cwd != NULL);
+    //printf ("dir_parse - path : %s\n", path);
+    ASSERT (*dir == NULL && *filename == NULL && cwd != NULL);
     if (path == NULL || *path == '\0')
         return false;
 
@@ -275,6 +270,7 @@ dir_parse (struct dir *cwd, const char *path, struct dir **dir, const char **fil
 bool
 dir_add (struct dir *dir, const char *name, disk_sector_t inode_sector) 
 {
+  //printf ("dir_add - sector : %d\n", inode_sector);
   struct dir_entry e;
   off_t ofs;
   bool success = false;
